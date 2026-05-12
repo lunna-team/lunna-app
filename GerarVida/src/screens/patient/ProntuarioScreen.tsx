@@ -1,5 +1,5 @@
-import React from 'react';
-import { View, Text, StyleSheet, ScrollView } from 'react-native';
+import React, { useState } from 'react';
+import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Modal, TouchableWithoutFeedback, TextInput } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { ScreenHeader } from '../../components/ScreenHeader';
 import { colors, spacing, radius } from '../../theme';
@@ -13,12 +13,22 @@ const PESOS = [
   { semana: 'Sem. 24', peso: '67,3 kg', ganho: '+1,3 kg' },
 ];
 
+const ALTURA_UTERINA = [
+  { semana: 'Sem. 16', au: '16 cm' },
+  { semana: 'Sem. 20', au: '20 cm' },
+  { semana: 'Sem. 22', au: '22 cm' },
+  { semana: 'Sem. 24', au: '24 cm' },
+];
+
 export function ProntuarioScreen() {
+  const [fabModalVisible, setFabModalVisible] = useState(false);
+  const [pesoInput, setPesoInput] = useState('');
   const insets = useSafeAreaInsets();
+
   return (
     <View style={[styles.container, { paddingBottom: insets.bottom }]}>
       <ScreenHeader title="Meu Prontuário" />
-      <ScrollView contentContainerStyle={{ padding: spacing.lg, paddingBottom: 40 }}>
+      <ScrollView contentContainerStyle={{ padding: spacing.lg, paddingBottom: 100 }}>
         <View style={styles.darkCard}>
           <Text style={styles.darkName}>Maria da Silva</Text>
           <Text style={styles.darkSub}>Prontuário 2024-00847</Text>
@@ -48,6 +58,20 @@ export function ProntuarioScreen() {
           ))}
         </View>
 
+        <Text style={styles.sectionTitle}>Altura Uterina</Text>
+        <View style={styles.table}>
+          <View style={[styles.tableRow, styles.tableHead]}>
+            <Text style={[styles.tableCell, styles.tableCellHead]}>Semana</Text>
+            <Text style={[styles.tableCell, styles.tableCellHead]}>AU</Text>
+          </View>
+          {ALTURA_UTERINA.map((a) => (
+            <View key={a.semana} style={styles.tableRow}>
+              <Text style={styles.tableCell}>{a.semana}</Text>
+              <Text style={[styles.tableCell, { color: colors.primaryDk, fontWeight: '600' }]}>{a.au}</Text>
+            </View>
+          ))}
+        </View>
+
         <Text style={styles.sectionTitle}>Posição do Bebê</Text>
         <View style={styles.infoCard}>
           <Text style={styles.infoValue}>🫁 Cefálico</Text>
@@ -70,6 +94,41 @@ export function ProntuarioScreen() {
           </View>
         </View>
       </ScrollView>
+
+      {/* FAB */}
+      <TouchableOpacity
+        style={[styles.fab, { bottom: insets.bottom + 24 }]}
+        onPress={() => setFabModalVisible(true)}
+        activeOpacity={0.85}
+      >
+        <Text style={styles.fabText}>+ Registrar peso</Text>
+      </TouchableOpacity>
+
+      {/* MODAL REGISTRAR PESO */}
+      <Modal visible={fabModalVisible} transparent animationType="slide" onRequestClose={() => setFabModalVisible(false)}>
+        <TouchableWithoutFeedback onPress={() => setFabModalVisible(false)}>
+          <View style={styles.overlay} />
+        </TouchableWithoutFeedback>
+        <View style={[styles.sheet, { paddingBottom: insets.bottom + 16 }]}>
+          <View style={styles.handle} />
+          <Text style={styles.sheetTitle}>Registrar Peso</Text>
+          <Text style={styles.fieldLabel}>Peso atual (kg)</Text>
+          <TextInput
+            style={styles.input}
+            keyboardType="decimal-pad"
+            value={pesoInput}
+            onChangeText={setPesoInput}
+            placeholder="ex: 67,5"
+            placeholderTextColor={colors.textInactive}
+          />
+          <TouchableOpacity
+            style={styles.saveBtn}
+            onPress={() => { setFabModalVisible(false); setPesoInput(''); }}
+          >
+            <Text style={styles.saveBtnText}>Salvar</Text>
+          </TouchableOpacity>
+        </View>
+      </Modal>
     </View>
   );
 }
@@ -97,4 +156,14 @@ const styles = StyleSheet.create({
   interDesc: { fontSize: 13, color: colors.textMid, lineHeight: 18, marginBottom: 8 },
   interBadge: { alignSelf: 'flex-start', paddingHorizontal: 10, paddingVertical: 3, borderRadius: radius.full },
   interBadgeText: { fontSize: 11, fontWeight: '700' },
+  fab: { position: 'absolute', right: spacing.lg, backgroundColor: colors.accent, paddingHorizontal: 20, paddingVertical: 16, borderRadius: radius.full, shadowColor: colors.accent, shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.4, shadowRadius: 8, elevation: 6 },
+  fabText: { fontSize: 14, fontWeight: '700', color: colors.white },
+  overlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.4)' },
+  sheet: { backgroundColor: colors.white, borderTopLeftRadius: radius.lg, borderTopRightRadius: radius.lg, padding: spacing.lg },
+  handle: { width: 40, height: 4, borderRadius: 2, backgroundColor: colors.textInactive, alignSelf: 'center', marginBottom: 20 },
+  sheetTitle: { fontSize: 17, fontWeight: '800', color: colors.text, marginBottom: 20 },
+  fieldLabel: { fontSize: 12, fontWeight: '600', color: colors.textMid, marginBottom: 8, textTransform: 'uppercase', letterSpacing: 0.5 },
+  input: { backgroundColor: colors.bg, borderRadius: radius.sm, padding: 14, fontSize: 15, color: colors.text, marginBottom: 16 },
+  saveBtn: { backgroundColor: colors.primary, borderRadius: radius.full, padding: 16, alignItems: 'center', marginTop: 8 },
+  saveBtnText: { fontSize: 15, fontWeight: '700', color: colors.white },
 });

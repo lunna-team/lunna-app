@@ -1,5 +1,5 @@
 import React, { useState, useRef } from 'react';
-import { View, Text, StyleSheet, FlatList, TextInput, TouchableOpacity, KeyboardAvoidingView, Platform } from 'react-native';
+import { View, Text, StyleSheet, FlatList, TextInput, TouchableOpacity, KeyboardAvoidingView, Platform, ScrollView } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { ScreenHeader } from '../../components/ScreenHeader';
 import { colors, spacing, radius } from '../../theme';
@@ -20,6 +20,14 @@ const AUTO_REPLIES = [
   'Registrei aqui. Vejo você na próxima consulta! 💚',
 ];
 
+const QUICK_REPLIES = [
+  'Estou com enjoo 🤢',
+  'Tenho uma dúvida sobre meu exame',
+  'Preciso remarcar consulta',
+  'Sinto dor nas costas',
+  'Bebê está se movendo bem?',
+];
+
 export function ChatScreen() {
   const [messages, setMessages] = useState<Msg[]>(INITIAL);
   const [text, setText] = useState('');
@@ -27,8 +35,8 @@ export function ChatScreen() {
   const listRef = useRef<FlatList>(null);
   const insets = useSafeAreaInsets();
 
-  const send = () => {
-    const t = text.trim();
+  const send = (msg?: string) => {
+    const t = (msg ?? text).trim();
     if (!t) return;
     const mine: Msg = { id: Date.now(), text: t, fromMe: true };
     setMessages((prev) => [...prev, mine]);
@@ -68,6 +76,21 @@ export function ChatScreen() {
             </View>
           ) : null}
         />
+
+        {/* QUICK REPLY CHIPS */}
+        <ScrollView
+          horizontal
+          showsHorizontalScrollIndicator={false}
+          style={styles.chipsScroll}
+          contentContainerStyle={styles.chipsContent}
+        >
+          {QUICK_REPLIES.map((q) => (
+            <TouchableOpacity key={q} style={styles.chip} onPress={() => send(q)} activeOpacity={0.7}>
+              <Text style={styles.chipText}>{q}</Text>
+            </TouchableOpacity>
+          ))}
+        </ScrollView>
+
         <View style={styles.inputRow}>
           <TextInput
             style={styles.input}
@@ -78,7 +101,7 @@ export function ChatScreen() {
             multiline
             maxLength={500}
           />
-          <TouchableOpacity style={styles.sendBtn} onPress={send} activeOpacity={0.8}>
+          <TouchableOpacity style={styles.sendBtn} onPress={() => send()} activeOpacity={0.8}>
             <Text style={styles.sendIcon}>↑</Text>
           </TouchableOpacity>
         </View>
@@ -97,6 +120,10 @@ const styles = StyleSheet.create({
   bubbleThem: { backgroundColor: colors.white, borderBottomLeftRadius: 4, shadowColor: '#000', shadowOffset: { width: 0, height: 1 }, shadowOpacity: 0.05, shadowRadius: 4, elevation: 1 },
   bubbleText: { fontSize: 14, color: colors.text, lineHeight: 20 },
   bubbleTextMe: { color: colors.white },
+  chipsScroll: { backgroundColor: colors.white, borderTopWidth: 1, borderTopColor: 'rgba(0,0,0,0.06)' },
+  chipsContent: { paddingHorizontal: spacing.md, paddingVertical: 10, gap: 8 },
+  chip: { backgroundColor: colors.primaryLight, borderRadius: radius.full, paddingHorizontal: 14, paddingVertical: 8 },
+  chipText: { fontSize: 13, fontWeight: '600', color: colors.primaryDk },
   inputRow: { flexDirection: 'row', padding: spacing.md, backgroundColor: colors.white, alignItems: 'flex-end', gap: 10, borderTopWidth: 1, borderTopColor: 'rgba(0,0,0,0.06)' },
   input: { flex: 1, backgroundColor: colors.bg, borderRadius: radius.full, paddingHorizontal: 16, paddingVertical: 10, fontSize: 14, color: colors.text, maxHeight: 100 },
   sendBtn: { width: 40, height: 40, borderRadius: 20, backgroundColor: colors.primary, justifyContent: 'center', alignItems: 'center' },

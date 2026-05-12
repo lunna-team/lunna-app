@@ -2,6 +2,7 @@ import React, { useRef, useState, useEffect } from 'react';
 import {
   View, Text, StyleSheet, ScrollView, TouchableOpacity,
   StatusBar, Dimensions, FlatList, NativeSyntheticEvent, NativeScrollEvent,
+  Modal, TouchableWithoutFeedback, Alert,
 } from 'react-native';
 import Svg, { Rect, Line, Path, Polyline, Circle, Ellipse } from 'react-native-svg';
 import { useNavigation } from '@react-navigation/native';
@@ -89,12 +90,42 @@ const TIPS = [
   { emoji: '🎵', title: 'Estimulação sonora', desc: 'O bebê já ouve! Converse, cante ou coloque música.' },
 ];
 
-const VIDEOS = [
-  { bg: ['#8DAA91', '#5E7E63'], cat: 'Nutrição',     titulo: 'Alimentação na semana 24',        meta: '8 min · Nutricionista' },
-  { bg: ['#5E7E63', '#3d5e42'], cat: 'Fisioterapia', titulo: 'Exercícios seguros no 2º trimestre', meta: '12 min · Fisioterapeuta' },
-  { bg: ['#301B28', '#4a2a3d'], cat: 'Sono',         titulo: 'Como preparar o sono do bebê',     meta: '10 min · Especialista' },
-  { bg: ['#E5987D', '#c97055'], cat: 'Parto',        titulo: 'O que esperar do parto normal',    meta: '15 min · Obstetra' },
-  { bg: ['#D4A0B5', '#b87a98'], cat: 'Amamentação',  titulo: 'Primeiros passos na amamentação',  meta: '9 min · Consultora' },
+interface Video {
+  bg: string; cat: string; catColor: string; titulo: string; meta: string;
+  desc: string; prof: string; profBg: string; duration: string;
+}
+
+const VIDEOS: Video[] = [
+  {
+    bg: '#8DAA91', cat: 'Nutrição', catColor: '#8DAA91',
+    titulo: 'Alimentação na Semana 24', meta: '8 min · Nutricionista',
+    desc: 'O que comer nesta fase da gestação para garantir os nutrientes essenciais para você e para o crescimento saudável do bebê.',
+    prof: '🥗 Dra. Carla Nunes — Nutricionista', profBg: 'rgba(141,170,145,0.15)', duration: '8 min',
+  },
+  {
+    bg: '#5E7E63', cat: 'Fisioterapia', catColor: '#5E7E63',
+    titulo: 'Exercícios Seguros no 2º Trimestre', meta: '12 min · Fisioterapeuta',
+    desc: 'Movimentos e alongamentos indicados para o segundo trimestre, com foco em alívio das dores lombares e fortalecimento do assoalho pélvico.',
+    prof: '🧘‍♀️ Dra. Renata Alves — Fisioterapeuta Obstétrica', profBg: 'rgba(94,126,99,0.12)', duration: '12 min',
+  },
+  {
+    bg: '#301B28', cat: 'Sono', catColor: '#9b6e8a',
+    titulo: 'Como Preparar o Sono do Bebê', meta: '10 min · Especialista',
+    desc: 'Técnicas para criar uma rotina saudável de sono desde os primeiros dias, e como o ambiente do quarto influencia a qualidade do descanso do bebê.',
+    prof: '🌙 Dr. Felipe Torres — Especialista do Sono Infantil', profBg: 'rgba(48,27,40,0.08)', duration: '10 min',
+  },
+  {
+    bg: '#E5987D', cat: 'Parto', catColor: '#E5987D',
+    titulo: 'O Que Esperar do Parto Normal', meta: '15 min · Obstetra',
+    desc: 'Um guia tranquilo sobre as etapas do parto normal: sinais de trabalho de parto, dilatação, expulsão e o pós-parto imediato.',
+    prof: '💫 Dra. Ana Lima — Obstetra', profBg: 'rgba(229,152,125,0.12)', duration: '15 min',
+  },
+  {
+    bg: '#D4A0B5', cat: 'Amamentação', catColor: '#b87a98',
+    titulo: 'Primeiros Passos na Amamentação', meta: '9 min · Consultora',
+    desc: 'Pega correta, posições mais confortáveis, como saber se o bebê está se alimentando bem e como lidar com os primeiros desafios da amamentação.',
+    prof: '🤱 Ana Beatriz Costa — Consultora de Amamentação', profBg: 'rgba(212,160,181,0.15)', duration: '9 min',
+  },
 ];
 
 export function HomeScreen() {
@@ -102,6 +133,7 @@ export function HomeScreen() {
   const insets = useSafeAreaInsets();
   const [carouselIdx, setCarouselIdx] = useState(0);
   const carouselRef = useRef<FlatList>(null);
+  const [videoModal, setVideoModal] = useState<Video | null>(null);
 
   useEffect(() => {
     storage.get<boolean>(STORAGE_KEYS.onboarded).then((v) => {
@@ -325,8 +357,8 @@ export function HomeScreen() {
         </View>
         <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ paddingHorizontal: 24, gap: 12, paddingBottom: 4 }}>
           {VIDEOS.map((v) => (
-            <View key={v.titulo} style={styles.videoCard}>
-              <View style={[styles.videoThumb, { backgroundColor: v.bg[0] }]}>
+            <TouchableOpacity key={v.titulo} style={styles.videoCard} onPress={() => setVideoModal(v)} activeOpacity={0.88}>
+              <View style={[styles.videoThumb, { backgroundColor: v.bg }]}>
                 <View style={styles.videoPlay}>
                   <Text style={{ color: 'white', fontSize: 14, marginLeft: 2 }}>▶</Text>
                 </View>
@@ -338,10 +370,51 @@ export function HomeScreen() {
                 <Text style={styles.videoTitle}>{v.titulo}</Text>
                 <Text style={styles.videoMeta}>{v.meta}</Text>
               </View>
-            </View>
+            </TouchableOpacity>
           ))}
         </ScrollView>
       </ScrollView>
+
+      {/* ── VIDEO MODAL ── */}
+      <Modal
+        visible={!!videoModal}
+        transparent
+        animationType="slide"
+        onRequestClose={() => setVideoModal(null)}
+      >
+        <TouchableWithoutFeedback onPress={() => setVideoModal(null)}>
+          <View style={styles.vmOverlay} />
+        </TouchableWithoutFeedback>
+        {videoModal && (
+          <View style={[styles.vmSheet, { paddingBottom: insets.bottom + 16 }]}>
+            <View style={styles.vmHandle} />
+            {/* Thumb */}
+            <View style={[styles.vmThumb, { backgroundColor: videoModal.bg }]}>
+              <View style={styles.vmPlayBtn}>
+                <Text style={{ color: 'white', fontSize: 22, marginLeft: 3 }}>▶</Text>
+              </View>
+            </View>
+            {/* Category */}
+            <Text style={[styles.vmCategory, { color: videoModal.catColor }]}>{videoModal.cat}</Text>
+            {/* Title */}
+            <Text style={styles.vmTitle}>{videoModal.titulo}</Text>
+            {/* Description */}
+            <Text style={styles.vmDesc}>{videoModal.desc}</Text>
+            {/* Professional */}
+            <View style={[styles.vmProf, { backgroundColor: videoModal.profBg }]}>
+              <Text style={styles.vmProfText}>{videoModal.prof}</Text>
+            </View>
+            {/* Watch button */}
+            <TouchableOpacity
+              style={[styles.vmWatchBtn, { backgroundColor: videoModal.catColor }]}
+              activeOpacity={0.85}
+              onPress={() => Alert.alert('Em breve', 'Este vídeo ainda não está disponível.')}
+            >
+              <Text style={styles.vmWatchText}>▶  Assistir agora</Text>
+            </TouchableOpacity>
+          </View>
+        )}
+      </Modal>
     </View>
   );
 }
@@ -429,4 +502,18 @@ const styles = StyleSheet.create({
   videoCatText: { fontSize: 9, fontWeight: '700', color: 'rgba(255,255,255,0.9)', textTransform: 'uppercase', letterSpacing: 0.3 },
   videoTitle: { fontSize: 12, fontWeight: '700', color: colors.text, lineHeight: 16, marginBottom: 5 },
   videoMeta: { fontSize: 10.5, color: colors.textInactive, fontWeight: '500' },
+
+  // VIDEO MODAL
+  vmOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.45)' },
+  vmSheet: { backgroundColor: colors.white, borderTopLeftRadius: 24, borderTopRightRadius: 24, paddingHorizontal: 20, paddingTop: 12 },
+  vmHandle: { width: 40, height: 4, borderRadius: 2, backgroundColor: 'rgba(0,0,0,0.12)', alignSelf: 'center', marginBottom: 16 },
+  vmThumb: { width: '100%', height: 160, borderRadius: 16, justifyContent: 'center', alignItems: 'center', marginBottom: 16, overflow: 'hidden' },
+  vmPlayBtn: { width: 56, height: 56, borderRadius: 28, backgroundColor: 'rgba(255,255,255,0.22)', borderWidth: 2.5, borderColor: 'rgba(255,255,255,0.6)', justifyContent: 'center', alignItems: 'center' },
+  vmCategory: { fontSize: 11, fontWeight: '800', textTransform: 'uppercase', letterSpacing: 1, marginBottom: 6 },
+  vmTitle: { fontSize: 18, fontWeight: '800', color: colors.text, letterSpacing: -0.3, lineHeight: 24, marginBottom: 10 },
+  vmDesc: { fontSize: 13.5, color: colors.textMid, lineHeight: 21, marginBottom: 14 },
+  vmProf: { borderRadius: 12, paddingHorizontal: 14, paddingVertical: 10, marginBottom: 16 },
+  vmProfText: { fontSize: 13, fontWeight: '600', color: colors.text },
+  vmWatchBtn: { borderRadius: 99, padding: 16, alignItems: 'center', marginBottom: 4 },
+  vmWatchText: { fontSize: 15, fontWeight: '700', color: colors.white },
 });
