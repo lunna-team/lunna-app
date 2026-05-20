@@ -29,8 +29,9 @@ export const storage = {
 
 export const STORAGE_KEYS = {
   onboarded: 'gv_onboarded',
-  glicose: 'gv_glicose',
-  pressao: 'gv_pressao',
+  accessToken: 'gv_access_token',
+  user: 'gv_user',
+  // legado — ainda usados localmente por algumas telas
   contracoes: 'gv_contracoes',
   consultaStatus: 'gv_consulta_proxima_status',
   cartaoPaciente: 'gv_cartao_1498',

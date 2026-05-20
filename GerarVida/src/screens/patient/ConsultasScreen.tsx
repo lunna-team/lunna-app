@@ -1,124 +1,228 @@
-import React, { useState, useEffect } from 'react';
-import { View, Text, StyleSheet, ScrollView, TouchableOpacity } from 'react-native';
+import React, { useState, useEffect, useCallback } from 'react';
+import {
+  View, Text, StyleSheet, ScrollView, TouchableOpacity,
+  Alert, ActivityIndicator, TextInput,
+} from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { ScreenHeader } from '../../components/ScreenHeader';
 import { BottomSheet } from '../../components/BottomSheet';
-import { storage, STORAGE_KEYS } from '../../services/storage';
+import { appointmentsService } from '../../services/appointments';
+import { useAuth } from '../../contexts/AuthContext';
 import { colors, spacing, radius } from '../../theme';
+import type { Appointment, PatientAppointmentStatus } from '../../types';
 
-type Status = 'pending' | 'confirmed' | 'remark';
-const MOTIVOS = ['Compromisso de trabalho', 'Problema de saúde', 'Transporte', 'Outro motivo'];
+const STATUS_LABELS: Record<PatientAppointmentStatus, string> = {
+  pending: 'Aguardando confirmação',
+  confirmed: '✓ Presença confirmada',
+  reschedule_requested: '⏳ Remarcação solicitada',
+  reschedule_approved: '✓ Nova data aprovada',
+};
 
-const HISTORICO = [
-  { id: 1, data: '14 Fev, 2025 · 09:00', tipo: 'Pré-natal de rotina', medico: 'Dra. Ana Lima', local: 'Clínica Gerar Vida', semana: '20ª semana' },
-  { id: 2, data: '17 Jan, 2025 · 10:30', tipo: 'Ultrassom morfológico', medico: 'Dra. Ana Lima', local: 'Clínica Gerar Vida', semana: '16ª semana' },
-  { id: 3, data: '20 Dez, 2024 · 09:00', tipo: 'Pré-natal 1º trimestre', medico: 'Dra. Ana Lima', local: 'Clínica Gerar Vida', semana: '12ª semana' },
-];
+const STATUS_COLORS: Record<PatientAppointmentStatus, string> = {
+  pending: '#F5A623',
+  confirmed: '#3CB371',
+  reschedule_requested: '#F5A623',
+  reschedule_approved: '#3CB371',
+};
+
+const TYPE_LABELS: Record<string, string> = {
+  routine: 'Rotina',
+  ultrasound: 'Ultrassom',
+  lab: 'Exames',
+  follow_up: 'Retorno',
+  emergency: 'Urgência',
+};
+
+function formatDateTime(dateStr: string, timeStr: string): string {
+  const [y, m, d] = dateStr.split('-');
+  const [h, min] = timeStr.split(':');
+  const dt = new Date(Number(y), Number(m) - 1, Number(d));
+  const weekday = dt.toLocaleDateString('pt-BR', { weekday: 'short' });
+  return `${weekday}, ${d}/${m} · ${h}:${min}`;
+}
+
+const RESCHEDULE_REASONS = [
+  { key: 'conflito_pessoal', label: 'Conflito pessoal' },
+  { key: 'problema_saude', label: 'Problema de saúde' },
+  { key: 'trabalho', label: 'Trabalho' },
+  { key: 'outro', label: 'Outro' },
+] as const;
 
 export function ConsultasScreen() {
-  const [status, setStatus] = useState<Status>('pending');
-  const [remarkSheet, setRemarkSheet] = useState(false);
-  const [detailSheet, setDetailSheet] = useState<typeof HISTORICO[0] | null>(null);
-  const [motivoSel, setMotivoSel] = useState<string | null>(null);
+  const { user } = useAuth();
   const insets = useSafeAreaInsets();
+  const [appointments, setAppointments] = useState<Appointment[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [selected, setSelected] = useState<Appointment | null>(null);
+  const [showReschedule, setShowReschedule] = useState(false);
+  const [rescheduleReason, setRescheduleReason] = useState('conflito_pessoal');
+  const [rescheduleObs, setRescheduleObs] = useState('');
+  const [actionLoading, setActionLoading] = useState(false);
 
-  useEffect(() => {
-    storage.get<Status>(STORAGE_KEYS.consultaStatus).then((v) => { if (v) setStatus(v); });
-  }, []);
+  const load = useCallback(async () => {
+    if (!user?.id) return;
+    try {
+      const res = await appointmentsService.listPatientAppointments(user.id, { limit: 20 });
+      setAppointments(res.data);
+    } catch {
+      Alert.alert('Erro', 'Não foi possível carregar as consultas.');
+    } finally {
+      setLoading(false);
+    }
+  }, [user?.id]);
 
-  const confirmar = async () => {
-    setStatus('confirmed');
-    await storage.set(STORAGE_KEYS.consultaStatus, 'confirmed');
+  useEffect(() => { load(); }, [load]);
+
+  const nextAppt = appointments.find(
+    (a) => a.status !== 'cancelled' && a.status !== 'completed' && new Date(a.datetime) >= new Date(),
+  );
+  const history = appointments.filter((a) => a !== nextAppt);
+
+  const handleConfirm = async (appt: Appointment) => {
+    setActionLoading(true);
+    try {
+      const updated = await appointmentsService.confirmAppointment(appt.id);
+      setAppointments((prev) => prev.map((a) => (a.id === updated.id ? updated : a)));
+    } catch {
+      Alert.alert('Erro', 'Não foi possível confirmar a consulta.');
+    } finally {
+      setActionLoading(false);
+    }
   };
 
-  const enviarRemarcacao = async () => {
-    setStatus('remark');
-    await storage.set(STORAGE_KEYS.consultaStatus, 'remark');
-    setRemarkSheet(false);
+  const handleRescheduleSubmit = async () => {
+    if (!selected) return;
+    setActionLoading(true);
+    try {
+      const updated = await appointmentsService.requestReschedule(
+        selected.id,
+        rescheduleReason,
+        rescheduleObs.trim() || undefined,
+      );
+      setAppointments((prev) => prev.map((a) => (a.id === updated.id ? updated : a)));
+      setShowReschedule(false);
+      setSelected(null);
+    } catch {
+      Alert.alert('Erro', 'Não foi possível solicitar remarcação.');
+    } finally {
+      setActionLoading(false);
+    }
   };
 
   return (
     <View style={[styles.container, { paddingBottom: insets.bottom }]}>
-      <ScreenHeader title="Consultas" />
-      <ScrollView contentContainerStyle={{ padding: spacing.lg, paddingBottom: 40 }}>
-        {/* PRÓXIMA */}
-        <View style={styles.nextCard}>
-          <Text style={styles.nextLabel}>Próxima consulta</Text>
-          <Text style={styles.nextDate}>Sex, 7 Mar · 09:30</Text>
-          <Text style={styles.nextType}>Pré-natal de rotina · Semana 24</Text>
-          <Text style={styles.nextLocal}>📍 Clínica Gerar Vida · Dra. Ana Lima</Text>
-          <View style={styles.nextActions}>
-            {status === 'pending' && (
-              <>
-                <TouchableOpacity style={styles.confirmBtn} onPress={confirmar}>
-                  <Text style={styles.confirmBtnText}>Confirmar presença</Text>
-                </TouchableOpacity>
-                <TouchableOpacity style={styles.remarkBtn} onPress={() => setRemarkSheet(true)}>
-                  <Text style={styles.remarkBtnText}>Solicitar remarcação</Text>
-                </TouchableOpacity>
-              </>
-            )}
-            {status === 'confirmed' && (
-              <View style={styles.statusBadge}><Text style={styles.statusBadgeText}>✓ Presença confirmada</Text></View>
-            )}
-            {status === 'remark' && (
-              <View style={[styles.statusBadge, { backgroundColor: 'rgba(229,152,125,0.15)' }]}>
-                <Text style={[styles.statusBadgeText, { color: colors.accent }]}>⏳ Remarcação solicitada</Text>
-              </View>
-            )}
-          </View>
+      <ScreenHeader title="Minhas Consultas" />
+
+      {loading ? (
+        <View style={styles.center}>
+          <ActivityIndicator size="large" color={colors.primary} />
         </View>
+      ) : (
+        <ScrollView contentContainerStyle={{ padding: spacing.lg, paddingBottom: 40 }}>
+          {/* PRÓXIMA CONSULTA */}
+          {nextAppt && (
+            <>
+              <Text style={styles.sectionTitle}>Próxima Consulta</Text>
+              <View style={styles.nextCard}>
+                <Text style={styles.nextDate}>{formatDateTime(nextAppt.date, nextAppt.time)}</Text>
+                <Text style={styles.nextLocation}>{nextAppt.location ?? 'Clínica Gerar Vida'}</Text>
+                <Text style={styles.nextType}>{TYPE_LABELS[nextAppt.type] ?? nextAppt.type}</Text>
 
-        {/* HISTÓRICO */}
-        <Text style={styles.sectionTitle}>Histórico</Text>
-        {HISTORICO.map((c) => (
-          <View key={c.id} style={styles.histCard}>
-            <View style={{ flex: 1 }}>
-              <Text style={styles.histDate}>{c.data}</Text>
-              <Text style={styles.histType}>{c.tipo}</Text>
-              <Text style={styles.histSemana}>{c.semana}</Text>
+                <View style={[styles.statusBadge, { backgroundColor: STATUS_COLORS[nextAppt.patient_status] + '20' }]}>
+                  <Text style={[styles.statusText, { color: STATUS_COLORS[nextAppt.patient_status] }]}>
+                    {STATUS_LABELS[nextAppt.patient_status]}
+                  </Text>
+                </View>
+
+                {nextAppt.patient_status === 'pending' && (
+                  <View style={styles.actionRow}>
+                    <TouchableOpacity
+                      style={[styles.actionBtn, styles.confirmBtn, actionLoading && { opacity: 0.6 }]}
+                      onPress={() => handleConfirm(nextAppt)}
+                      disabled={actionLoading}
+                    >
+                      <Text style={styles.confirmBtnText}>Confirmar presença</Text>
+                    </TouchableOpacity>
+                    <TouchableOpacity
+                      style={[styles.actionBtn, styles.rescheduleBtn]}
+                      onPress={() => { setSelected(nextAppt); setShowReschedule(true); }}
+                    >
+                      <Text style={styles.rescheduleBtnText}>Solicitar remarcação</Text>
+                    </TouchableOpacity>
+                  </View>
+                )}
+              </View>
+            </>
+          )}
+
+          {/* HISTÓRICO */}
+          {history.length > 0 && (
+            <>
+              <Text style={[styles.sectionTitle, { marginTop: 24 }]}>Histórico</Text>
+              {history.map((a) => (
+                <View key={a.id} style={styles.histCard}>
+                  <Text style={styles.histDate}>{formatDateTime(a.date, a.time)}</Text>
+                  <Text style={styles.histType}>{TYPE_LABELS[a.type] ?? a.type}</Text>
+                  <View style={[styles.statusBadge, { backgroundColor: STATUS_COLORS[a.patient_status] + '20', alignSelf: 'flex-start', marginTop: 8 }]}>
+                    <Text style={[styles.statusText, { color: STATUS_COLORS[a.patient_status] }]}>
+                      {STATUS_LABELS[a.patient_status]}
+                    </Text>
+                  </View>
+                </View>
+              ))}
+            </>
+          )}
+
+          {appointments.length === 0 && (
+            <View style={styles.empty}>
+              <Text style={styles.emptyText}>Nenhuma consulta encontrada</Text>
             </View>
-            <TouchableOpacity style={styles.detailBtn} onPress={() => setDetailSheet(c)}>
-              <Text style={styles.detailBtnText}>Ver detalhes</Text>
-            </TouchableOpacity>
-          </View>
-        ))}
-      </ScrollView>
+          )}
+        </ScrollView>
+      )}
 
-      {/* REMARCAÇÃO */}
-      <BottomSheet visible={remarkSheet} onClose={() => setRemarkSheet(false)} title="Solicitar remarcação">
-        <Text style={styles.fieldLabel}>Motivo</Text>
-        <View style={{ gap: 8, marginBottom: 20 }}>
-          {MOTIVOS.map((m) => (
-            <TouchableOpacity key={m} style={[styles.motivoRow, motivoSel === m && styles.motivoRowActive]} onPress={() => setMotivoSel(m)}>
-              <View style={[styles.radio, motivoSel === m && styles.radioActive]} />
-              <Text style={styles.motivoText}>{m}</Text>
+      {/* MODAL REMARCAÇÃO */}
+      <BottomSheet
+        visible={showReschedule}
+        onClose={() => { setShowReschedule(false); setSelected(null); }}
+        title="Solicitar Remarcação"
+      >
+        <Text style={styles.fieldLabel}>MOTIVO</Text>
+        <View style={styles.reasonList}>
+          {RESCHEDULE_REASONS.map((r) => (
+            <TouchableOpacity
+              key={r.key}
+              style={[styles.reasonChip, rescheduleReason === r.key && styles.reasonChipActive]}
+              onPress={() => setRescheduleReason(r.key)}
+            >
+              <Text style={[styles.reasonText, rescheduleReason === r.key && styles.reasonTextActive]}>
+                {r.label}
+              </Text>
             </TouchableOpacity>
           ))}
         </View>
-        <TouchableOpacity style={styles.confirmBtn} onPress={enviarRemarcacao}>
-          <Text style={styles.confirmBtnText}>Enviar solicitação</Text>
-        </TouchableOpacity>
-      </BottomSheet>
 
-      {/* DETALHE */}
-      <BottomSheet visible={!!detailSheet} onClose={() => setDetailSheet(null)} title="Detalhes da consulta">
-        {detailSheet && (
-          <View style={{ gap: 12 }}>
-            {[
-              { l: 'Tipo', v: detailSheet.tipo },
-              { l: 'Data', v: detailSheet.data },
-              { l: 'Médica', v: detailSheet.medico },
-              { l: 'Local', v: detailSheet.local },
-              { l: 'Semana gestacional', v: detailSheet.semana },
-            ].map(({ l, v }) => (
-              <View key={l}>
-                <Text style={styles.fieldLabel}>{l}</Text>
-                <Text style={{ fontSize: 14, color: colors.text, fontWeight: '600' }}>{v}</Text>
-              </View>
-            ))}
-          </View>
-        )}
+        <Text style={[styles.fieldLabel, { marginTop: 16 }]}>OBSERVAÇÃO (opcional)</Text>
+        <TextInput
+          style={styles.input}
+          value={rescheduleObs}
+          onChangeText={setRescheduleObs}
+          placeholder="Descreva o motivo..."
+          placeholderTextColor={colors.textInactive}
+          multiline
+        />
+
+        <TouchableOpacity
+          style={[styles.saveBtn, actionLoading && { opacity: 0.6 }]}
+          onPress={handleRescheduleSubmit}
+          disabled={actionLoading}
+        >
+          {actionLoading ? (
+            <ActivityIndicator color={colors.white} />
+          ) : (
+            <Text style={styles.saveBtnText}>Solicitar Remarcação</Text>
+          )}
+        </TouchableOpacity>
       </BottomSheet>
     </View>
   );
@@ -126,29 +230,32 @@ export function ConsultasScreen() {
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: colors.bg },
-  nextCard: { backgroundColor: colors.primary, borderRadius: radius.lg, padding: 20, marginBottom: 24 },
-  nextLabel: { fontSize: 11, fontWeight: '600', color: 'rgba(255,255,255,0.8)', textTransform: 'uppercase', letterSpacing: 0.8, marginBottom: 4 },
-  nextDate: { fontSize: 22, fontWeight: '800', color: colors.white, letterSpacing: -0.3, marginBottom: 4 },
-  nextType: { fontSize: 14, color: 'rgba(255,255,255,0.85)', marginBottom: 4 },
-  nextLocal: { fontSize: 13, color: 'rgba(255,255,255,0.75)', marginBottom: 16 },
-  nextActions: { gap: 10 },
-  confirmBtn: { backgroundColor: colors.white, borderRadius: radius.full, padding: 14, alignItems: 'center' },
-  confirmBtnText: { fontSize: 14, fontWeight: '700', color: colors.primaryDk },
-  remarkBtn: { borderWidth: 1.5, borderColor: 'rgba(255,255,255,0.5)', borderRadius: radius.full, padding: 14, alignItems: 'center' },
-  remarkBtnText: { fontSize: 14, fontWeight: '600', color: colors.white },
-  statusBadge: { backgroundColor: 'rgba(255,255,255,0.2)', borderRadius: radius.full, padding: 12, alignItems: 'center' },
-  statusBadgeText: { fontSize: 14, fontWeight: '700', color: colors.white },
+  center: { flex: 1, justifyContent: 'center', alignItems: 'center' },
   sectionTitle: { fontSize: 17, fontWeight: '800', color: colors.text, marginBottom: 12 },
-  histCard: { backgroundColor: colors.white, borderRadius: radius.md, padding: 16, marginBottom: 10, flexDirection: 'row', alignItems: 'center', shadowColor: '#000', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.04, shadowRadius: 8, elevation: 2 },
-  histDate: { fontSize: 12, color: colors.textMid, marginBottom: 2 },
-  histType: { fontSize: 14, fontWeight: '700', color: colors.text },
-  histSemana: { fontSize: 12, color: colors.primary, marginTop: 2 },
-  detailBtn: { backgroundColor: colors.bg, borderRadius: radius.sm, paddingHorizontal: 12, paddingVertical: 8 },
-  detailBtnText: { fontSize: 12, fontWeight: '600', color: colors.primaryDk },
-  fieldLabel: { fontSize: 11, fontWeight: '600', color: colors.textInactive, textTransform: 'uppercase', letterSpacing: 0.5, marginBottom: 4 },
-  motivoRow: { flexDirection: 'row', alignItems: 'center', gap: 12, padding: 14, borderRadius: radius.md, backgroundColor: colors.bg },
-  motivoRowActive: { backgroundColor: colors.primaryLight + '40' },
-  radio: { width: 18, height: 18, borderRadius: 9, borderWidth: 2, borderColor: colors.textInactive },
-  radioActive: { borderColor: colors.primary, backgroundColor: colors.primary },
-  motivoText: { fontSize: 14, color: colors.text },
+  nextCard: { backgroundColor: colors.primary, borderRadius: radius.lg, padding: 20, marginBottom: 8 },
+  nextDate: { fontSize: 20, fontWeight: '800', color: colors.white, marginBottom: 4 },
+  nextLocation: { fontSize: 13, color: 'rgba(255,255,255,0.8)', marginBottom: 4 },
+  nextType: { fontSize: 11, fontWeight: '600', color: 'rgba(255,255,255,0.7)', textTransform: 'uppercase', letterSpacing: 0.5 },
+  statusBadge: { paddingHorizontal: 10, paddingVertical: 5, borderRadius: radius.full, marginTop: 12, alignSelf: 'flex-start' },
+  statusText: { fontSize: 12, fontWeight: '600' },
+  actionRow: { flexDirection: 'row', gap: 10, marginTop: 16 },
+  actionBtn: { flex: 1, padding: 12, borderRadius: radius.full, alignItems: 'center' },
+  confirmBtn: { backgroundColor: colors.white },
+  confirmBtnText: { fontSize: 13, fontWeight: '700', color: colors.primary },
+  rescheduleBtn: { backgroundColor: 'rgba(255,255,255,0.2)', borderWidth: 1, borderColor: 'rgba(255,255,255,0.4)' },
+  rescheduleBtnText: { fontSize: 13, fontWeight: '600', color: colors.white },
+  histCard: { backgroundColor: colors.white, borderRadius: radius.md, padding: 16, marginBottom: 8 },
+  histDate: { fontSize: 14, fontWeight: '700', color: colors.text },
+  histType: { fontSize: 12, color: colors.textMid, marginTop: 2 },
+  empty: { alignItems: 'center', paddingVertical: 48 },
+  emptyText: { fontSize: 16, fontWeight: '700', color: colors.textMid },
+  fieldLabel: { fontSize: 11, fontWeight: '600', color: colors.textMid, letterSpacing: 0.8, textTransform: 'uppercase', marginBottom: 8 },
+  reasonList: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
+  reasonChip: { paddingHorizontal: 14, paddingVertical: 8, borderRadius: radius.full, borderWidth: 1.5, borderColor: colors.primaryLight, backgroundColor: colors.bg },
+  reasonChipActive: { backgroundColor: colors.primary, borderColor: colors.primary },
+  reasonText: { fontSize: 13, fontWeight: '600', color: colors.textMid },
+  reasonTextActive: { color: colors.white },
+  input: { backgroundColor: colors.bg, borderRadius: radius.md, padding: 14, fontSize: 15, color: colors.text, borderWidth: 1.5, borderColor: colors.primaryLight, minHeight: 80 },
+  saveBtn: { marginTop: 24, backgroundColor: colors.primary, borderRadius: radius.full, padding: 16, alignItems: 'center' },
+  saveBtnText: { fontSize: 15, fontWeight: '700', color: colors.white },
 });
