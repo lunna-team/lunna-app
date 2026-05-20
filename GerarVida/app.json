@@ -1,0 +1,31 @@
+{
+  "expo": {
+    "name": "Gerar Vida",
+    "slug": "gerar-vida",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "icon": "./assets/icon.png",
+    "userInterfaceStyle": "light",
+    "newArchEnabled": true,
+    "splash": {
+      "image": "./assets/splash-icon.png",
+      "resizeMode": "contain",
+      "backgroundColor": "#F4F6F4"
+    },
+    "ios": {
+      "supportsTablet": false,
+      "bundleIdentifier": "com.gerarvida.app"
+    },
+    "android": {
+      "package": "com.gerarvida.app",
+      "adaptiveIcon": {
+        "foregroundImage": "./assets/adaptive-icon.png",
+        "backgroundColor": "#8DAA91"
+      },
+      "edgeToEdgeEnabled": true
+    },
+    "web": {
+      "favicon": "./assets/favicon.png"
+    }
+  }
+}
