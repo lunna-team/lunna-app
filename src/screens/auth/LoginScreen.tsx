@@ -4,9 +4,9 @@ import {
   StatusBar, KeyboardAvoidingView, Platform, Alert, ActivityIndicator,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { useAuth } from '../contexts/AuthContext';
-import { ApiError } from '../services/api';
-import { colors, spacing, radius } from '../theme';
+import { useAuth } from '../../contexts/AuthContext';
+import { ApiError } from '../../services/api';
+import { colors, spacing, radius } from '../../theme';
 
 export function LoginScreen() {
   const [email, setEmail] = useState('');

@@ -1,12 +1,16 @@
 import React, { useState, useRef, useEffect } from 'react';
 import {
   View, Text, StyleSheet, Image, TouchableOpacity,
-  Animated, Easing, Pressable, Modal,
+  Animated, Easing,
 } from 'react-native';
 import Svg, { Polyline, Line } from 'react-native-svg';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useNavigation } from '@react-navigation/native';
+import { patientsService } from '../../services/patients';
+import { fetalDevelopmentService } from '../../services/fetalDevelopment';
+import { useAuth } from '../../contexts/AuthContext';
 import { colors } from '../../theme';
+import type { PatientProntuario, FetalDevelopment } from '../../types';
 
 const HOTSPOT_DATA = {
   cerebro: {
@@ -66,11 +70,33 @@ function HotspotDot({ id, style }: { id: HotspotKey; style: object }) {
   );
 }
 
+function formatEdd(iso: string): string {
+  return new Date(iso).toLocaleDateString('pt-BR', { day: 'numeric', month: 'long', year: 'numeric' });
+}
+
 export function Feto3DScreen() {
+  const { user } = useAuth();
   const [selectedId, setSelectedId] = useState<HotspotKey | null>(null);
+  const [prontuario, setProntuario] = useState<PatientProntuario | null>(null);
+  const [fetalData, setFetalData] = useState<FetalDevelopment | null>(null);
   const navigation = useNavigation();
   const insets = useSafeAreaInsets();
   const selected = selectedId ? HOTSPOT_DATA[selectedId] : null;
+
+  useEffect(() => {
+    if (!user?.id) return;
+    patientsService.getProntuario(user.id).then(setProntuario).catch(() => {});
+  }, [user?.id]);
+
+  useEffect(() => {
+    const week = prontuario?.current_week ?? 24;
+    fetalDevelopmentService.getWeek(week).then(setFetalData).catch(() => {});
+  }, [prontuario?.current_week]);
+
+  const currentWeek = prontuario?.current_week ?? 24;
+  const daysLeft = prontuario?.edd
+    ? Math.max(0, Math.ceil((new Date(prontuario.edd).getTime() - Date.now()) / 86400000))
+    : null;
 
   const closeInfo = () => setSelectedId(null);
 
@@ -92,7 +118,7 @@ export function Feto3DScreen() {
             <Polyline points="15 18 9 12 15 6" />
           </Svg>
         </TouchableOpacity>
-        <Text style={styles.weekLabel}>Semana 24 🫀</Text>
+        <Text style={styles.weekLabel}>Semana {currentWeek} 🫀</Text>
         <View style={{ width: 46 }} />
       </View>
 
@@ -127,7 +153,7 @@ export function Feto3DScreen() {
           </View>
           <Text style={styles.infoText}>{selected.text}</Text>
           <View style={styles.infoBadge}>
-            <Text style={styles.infoBadgeText}>Semana 24 · Em desenvolvimento</Text>
+            <Text style={styles.infoBadgeText}>Semana {currentWeek} · Em desenvolvimento</Text>
           </View>
         </View>
       )}
@@ -146,8 +172,16 @@ export function Feto3DScreen() {
       <View style={[styles.gestCard, { marginBottom: Math.max(insets.bottom, 26) }]}>
         <View>
           <Text style={styles.gestLabel}>⏳ Cálculo Gestacional</Text>
-          <Text style={styles.gestMain}>Faltam 100 dias!</Text>
-          <Text style={styles.gestSub}>Previsão de parto: 12 de junho de 2025</Text>
+          <Text style={styles.gestMain}>
+            {daysLeft !== null ? `Faltam ${daysLeft} dias!` : `Semana ${currentWeek}`}
+          </Text>
+          <Text style={styles.gestSub}>
+            {prontuario?.edd
+              ? `Previsão de parto: ${formatEdd(prontuario.edd)}`
+              : fetalData
+              ? `${fetalData.size_cm} cm · ${fetalData.weight_g} g`
+              : 'Carregando...'}
+          </Text>
         </View>
         <Text style={styles.gestEmoji}>🍼</Text>
       </View>

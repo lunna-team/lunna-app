@@ -1,30 +1,18 @@
-import React, { useState } from 'react';
-import { View, Text, StyleSheet, ScrollView, TouchableOpacity, StatusBar, TextInput } from 'react-native';
+import React, { useState, useEffect, useRef } from 'react';
+import {
+  View, Text, StyleSheet, ScrollView, TouchableOpacity, StatusBar, TextInput, ActivityIndicator,
+} from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { patientsService } from '../../services/patients';
+import { useAuth } from '../../contexts/AuthContext';
 import { colors, spacing, radius } from '../../theme';
-
-const AGENDA = [
-  { hora: '08:30', paciente: 'Maria da Silva', medico: 'Dra. Ana Lima', status: 'done' },
-  { hora: '09:00', paciente: 'Carla Mendes', medico: 'Dra. Ana Lima', status: 'done' },
-  { hora: '10:00', paciente: 'Fernanda Costa', medico: 'Dra. Ana Lima', status: 'now' },
-  { hora: '11:00', paciente: 'Juliana Rocha', medico: 'Dra. Ana Lima', status: 'confirmed' },
-  { hora: '14:00', paciente: 'Patrícia Souza', medico: 'Dra. Ana Lima', status: 'pending' },
-];
+import type { SecretaryDashboard, PatientDetail } from '../../types';
 
 const ACOES = [
   { icon: '📅', label: 'Novo Agendamento' },
   { icon: '👤', label: 'Cadastrar Paciente' },
   { icon: '📲', label: 'Enviar Lembrete' },
   { icon: '📊', label: 'Relatório do Dia' },
-];
-
-const PACIENTES = [
-  { iniciais: 'MS', nome: 'Maria da Silva', prontuario: '2024-00847', semana: 24 },
-  { iniciais: 'CM', nome: 'Carla Mendes', prontuario: '2024-00312', semana: 20 },
-  { iniciais: 'FC', nome: 'Fernanda Costa', prontuario: '2024-00589', semana: 10 },
-  { iniciais: 'JR', nome: 'Juliana Rocha', prontuario: '2024-00201', semana: 32 },
-  { iniciais: 'PS', nome: 'Patrícia Souza', prontuario: '2024-00734', semana: 36 },
-  { iniciais: 'AB', nome: 'Ana Beatriz Fonseca', prontuario: '2024-00892', semana: 14 },
 ];
 
 const statusInfo = (s: string) => {
@@ -34,13 +22,49 @@ const statusInfo = (s: string) => {
   return { bg: 'rgba(245,166,35,0.12)', color: colors.yellow, label: 'Pendente' };
 };
 
-export function DashboardSecretariaScreen() {
-  const [busca, setBusca] = useState('');
-  const insets = useSafeAreaInsets();
+function getInitials(name: string): string {
+  return name.split(' ').slice(0, 2).map((n) => n[0]).join('').toUpperCase();
+}
 
-  const filtradas = PACIENTES.filter((p) =>
-    p.nome.toLowerCase().includes(busca.toLowerCase()) || p.prontuario.includes(busca)
-  );
+export function DashboardSecretariaScreen() {
+  const { user } = useAuth();
+  const [dashboard, setDashboard] = useState<SecretaryDashboard | null>(null);
+  const [pacientes, setPacientes] = useState<PatientDetail[]>([]);
+  const [busca, setBusca] = useState('');
+  const [loading, setLoading] = useState(true);
+  const insets = useSafeAreaInsets();
+  const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  useEffect(() => {
+    Promise.all([
+      patientsService.getSecretaryDashboard(),
+      patientsService.getDoctorPatients('secretary', { limit: 30 }),
+    ])
+      .then(([db, pt]) => {
+        setDashboard(db);
+        setPacientes(pt.data);
+      })
+      .catch(() => {})
+      .finally(() => setLoading(false));
+  }, []);
+
+  const handleBusca = (text: string) => {
+    setBusca(text);
+    if (debounceRef.current) clearTimeout(debounceRef.current);
+    debounceRef.current = setTimeout(() => {
+      patientsService
+        .getDoctorPatients('secretary', { search: text || undefined, limit: 30 })
+        .then((res) => setPacientes(res.data))
+        .catch(() => {});
+    }, 300);
+  };
+
+  const filtradas = busca
+    ? pacientes.filter((p) => p.name.toLowerCase().includes(busca.toLowerCase()))
+    : pacientes;
+
+  const today = new Date().toLocaleDateString('pt-BR', { weekday: 'short', day: 'numeric', month: 'long', year: 'numeric' });
+  const firstName = user?.name?.split(' ')[0] ?? '';
 
   return (
     <View style={{ flex: 1, backgroundColor: colors.bg }}>
@@ -50,15 +74,20 @@ export function DashboardSecretariaScreen() {
         <View style={[styles.header, { paddingTop: insets.top + 20 }]}>
           <View>
             <Text style={styles.role}>Secretaria</Text>
-            <Text style={styles.name}>Bom dia, Juliana 👋</Text>
-            <Text style={styles.date}>Terça, 15 de Abril de 2026</Text>
+            <Text style={styles.name}>Bom dia, {firstName} 👋</Text>
+            <Text style={styles.date}>{today}</Text>
           </View>
           <View style={styles.avatar}><Text style={{ fontSize: 20 }}>📋</Text></View>
         </View>
 
         {/* STATS */}
         <View style={styles.statsRow}>
-          {[['8', 'Consultas'], ['5', 'Confirmadas'], ['3', 'Pendentes'], ['24', 'Pacientes']].map(([v, l]) => (
+          {[
+            [String(dashboard?.today_appointments ?? '—'), 'Consultas'],
+            [String(dashboard?.confirmed ?? '—'), 'Confirmadas'],
+            [String(dashboard?.pending ?? '—'), 'Pendentes'],
+            [String(dashboard?.total_patients ?? '—'), 'Pacientes'],
+          ].map(([v, l]) => (
             <View key={l} style={styles.statCard}>
               <Text style={styles.statNum}>{v}</Text>
               <Text style={styles.statLabel}>{l}</Text>
@@ -77,49 +106,41 @@ export function DashboardSecretariaScreen() {
           ))}
         </View>
 
-        {/* AGENDA */}
-        <Text style={[styles.sectionTitle, { marginTop: 24 }]}>Agenda de Hoje</Text>
-        {AGENDA.map((a) => {
-          const { bg, color, label } = statusInfo(a.status);
-          return (
-            <View key={a.hora} style={[styles.apptCard, a.status === 'now' && { borderWidth: 1.5, borderColor: colors.accent }]}>
-              <Text style={[styles.hora, a.status === 'now' && { color: colors.accent }]}>{a.hora}</Text>
-              <View style={{ flex: 1 }}>
-                <Text style={styles.apptName}>{a.paciente}</Text>
-                <Text style={styles.apptMedico}>{a.medico}</Text>
-              </View>
-              <View style={[styles.badge, { backgroundColor: bg }]}>
-                <Text style={[styles.badgeText, { color }]}>{label}</Text>
-              </View>
-            </View>
-          );
-        })}
-
         {/* BUSCA DE PACIENTES */}
         <Text style={[styles.sectionTitle, { marginTop: 24 }]}>Pacientes</Text>
         <View style={{ paddingHorizontal: spacing.lg, marginBottom: 12 }}>
           <TextInput
             style={styles.searchInput}
-            placeholder="Buscar por nome ou prontuário..."
+            placeholder="Buscar por nome..."
             placeholderTextColor={colors.textInactive}
             value={busca}
-            onChangeText={setBusca}
+            onChangeText={handleBusca}
           />
         </View>
-        {filtradas.map((p) => (
-          <View key={p.prontuario} style={styles.pacienteCard}>
-            <View style={styles.pacienteAvatar}><Text style={styles.pacienteAvatarText}>{p.iniciais}</Text></View>
-            <View style={{ flex: 1 }}>
-              <Text style={styles.pacienteNome}>{p.nome}</Text>
-              <Text style={styles.pacienteMeta}>Prontuário {p.prontuario}</Text>
-            </View>
-            <View style={styles.weekBadge}>
-              <Text style={styles.weekText}>Sem. {p.semana}</Text>
-            </View>
-          </View>
-        ))}
-        {filtradas.length === 0 && (
-          <Text style={styles.emptyText}>Nenhuma paciente encontrada</Text>
+        {loading ? (
+          <ActivityIndicator size="small" color={colors.primary} style={{ marginTop: 20 }} />
+        ) : (
+          <>
+            {filtradas.map((p) => (
+              <View key={p.id} style={styles.pacienteCard}>
+                <View style={styles.pacienteAvatar}>
+                  <Text style={styles.pacienteAvatarText}>{getInitials(p.name)}</Text>
+                </View>
+                <View style={{ flex: 1 }}>
+                  <Text style={styles.pacienteNome}>{p.name}</Text>
+                  {p.prontuario && <Text style={styles.pacienteMeta}>Prontuário {p.prontuario}</Text>}
+                </View>
+                {p.current_week != null && (
+                  <View style={styles.weekBadge}>
+                    <Text style={styles.weekText}>Sem. {p.current_week}</Text>
+                  </View>
+                )}
+              </View>
+            ))}
+            {filtradas.length === 0 && (
+              <Text style={styles.emptyText}>Nenhuma paciente encontrada</Text>
+            )}
+          </>
         )}
       </ScrollView>
 

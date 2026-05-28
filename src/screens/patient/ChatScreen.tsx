@@ -1,24 +1,15 @@
-import React, { useState, useRef } from 'react';
-import { View, Text, StyleSheet, FlatList, TextInput, TouchableOpacity, KeyboardAvoidingView, Platform, ScrollView } from 'react-native';
+import React, { useState, useRef, useEffect, useCallback } from 'react';
+import {
+  View, Text, StyleSheet, FlatList, TextInput, TouchableOpacity,
+  KeyboardAvoidingView, Platform, ScrollView,
+} from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { ScreenHeader } from '../../components/common/ScreenHeader';
+import { messagesService } from '../../services/messages';
+import { useAuth } from '../../contexts/AuthContext';
+import { storage, STORAGE_KEYS } from '../../services/storage';
 import { colors, spacing, radius } from '../../theme';
-
-interface Msg { id: number; text: string; fromMe: boolean; }
-
-const INITIAL: Msg[] = [
-  { id: 1, text: 'Oi, Dra. Ana! Tudo bem?', fromMe: true },
-  { id: 2, text: 'Olá, Maria! Tudo ótimo. Como você está se sentindo?', fromMe: false },
-  { id: 3, text: 'Estou sentindo algumas contrações leves, é normal?', fromMe: true },
-  { id: 4, text: 'Com 24 semanas é comum sentir contrações de Braxton Hicks. Se forem regulares ou dolorosas, nos avise imediatamente. 🩺', fromMe: false },
-];
-
-const AUTO_REPLIES = [
-  'Entendido! Vou verificar e te retorno em breve.',
-  'Obrigada por me avisar. Acompanhe e me informe se piorar.',
-  'Isso é normal nessa fase. Mas fique atenta a qualquer mudança.',
-  'Registrei aqui. Vejo você na próxima consulta! 💚',
-];
+import type { Message } from '../../types';
 
 const QUICK_REPLIES = [
   'Estou com enjoo 🤢',
@@ -29,55 +20,135 @@ const QUICK_REPLIES = [
 ];
 
 export function ChatScreen() {
-  const [messages, setMessages] = useState<Msg[]>(INITIAL);
+  const { user } = useAuth();
+  const [messages, setMessages] = useState<Message[]>([]);
   const [text, setText] = useState('');
   const [typing, setTyping] = useState(false);
   const listRef = useRef<FlatList>(null);
+  const wsRef = useRef<WebSocket | null>(null);
   const insets = useSafeAreaInsets();
 
-  const send = (msg?: string) => {
-    const t = (msg ?? text).trim();
-    if (!t) return;
-    const mine: Msg = { id: Date.now(), text: t, fromMe: true };
-    setMessages((prev) => [...prev, mine]);
+  const patientId = user?.id ?? '';
+
+  const connectWS = useCallback(async () => {
+    if (!patientId) return;
+    const token = await storage.get<string>(STORAGE_KEYS.accessToken);
+    if (!token) return;
+
+    wsRef.current = messagesService.connectWS(
+      patientId,
+      token,
+      (msg) => {
+        setMessages((prev) => {
+          // deduplicate by id
+          if (prev.some((m) => m.id === msg.id)) return prev;
+          return [...prev, msg];
+        });
+        setTyping(false);
+      },
+      (code) => {
+        if (code !== 4001) {
+          setTimeout(connectWS, 3000);
+        }
+      },
+    );
+  }, [patientId]);
+
+  useEffect(() => {
+    if (!patientId) return;
+
+    messagesService
+      .list(patientId, { limit: 50 })
+      .then((res) => setMessages([...res.data].reverse()))
+      .catch(() => {});
+
+    messagesService.markRead(patientId).catch(() => {});
+
+    connectWS();
+
+    return () => {
+      wsRef.current?.close();
+    };
+  }, [patientId]);
+
+  const send = async (content?: string) => {
+    const t = (content ?? text).trim();
+    if (!t || !patientId) return;
     setText('');
-    setTyping(true);
-    setTimeout(() => {
-      const reply = AUTO_REPLIES[Math.floor(Math.random() * AUTO_REPLIES.length)];
-      setMessages((prev) => [...prev, { id: Date.now() + 1, text: reply, fromMe: false }]);
-      setTyping(false);
-    }, 1800);
+
+    // optimistic local message
+    const tempId = `temp_${Date.now()}`;
+    const optimistic: Message = {
+      id: tempId,
+      patient_id: patientId,
+      sender_id: user?.id ?? '',
+      sender_role: 'patient',
+      content: t,
+      read: false,
+      created_at: new Date().toISOString(),
+    };
+    setMessages((prev) => [...prev, optimistic]);
+
+    if (wsRef.current?.readyState === WebSocket.OPEN) {
+      wsRef.current.send(JSON.stringify({ content: t }));
+    } else {
+      try {
+        const sent = await messagesService.send(patientId, t);
+        setMessages((prev) =>
+          prev.map((m) => (m.id === tempId ? sent : m)),
+        );
+      } catch {
+        setMessages((prev) => prev.filter((m) => m.id !== tempId));
+      }
+    }
   };
 
+  const isFromMe = (msg: Message) => msg.sender_role === 'patient';
+
   return (
-    <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
+    <KeyboardAvoidingView
+      style={{ flex: 1 }}
+      behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+    >
       <View style={[styles.container, { paddingBottom: insets.bottom }]}>
         <ScreenHeader title="Chat com Equipe" />
         <FlatList
           ref={listRef}
           data={messages}
-          keyExtractor={(m) => String(m.id)}
+          keyExtractor={(m) => m.id}
           contentContainerStyle={{ padding: spacing.lg, paddingBottom: 8 }}
           onContentSizeChange={() => listRef.current?.scrollToEnd({ animated: true })}
-          renderItem={({ item }) => (
-            <View style={[styles.bubbleWrap, item.fromMe && styles.bubbleWrapMe]}>
-              {!item.fromMe && <View style={styles.avatar}><Text style={{ fontSize: 14 }}>👩‍⚕️</Text></View>}
-              <View style={[styles.bubble, item.fromMe ? styles.bubbleMe : styles.bubbleThem]}>
-                <Text style={[styles.bubbleText, item.fromMe && styles.bubbleTextMe]}>{item.text}</Text>
+          renderItem={({ item }) => {
+            const mine = isFromMe(item);
+            return (
+              <View style={[styles.bubbleWrap, mine && styles.bubbleWrapMe]}>
+                {!mine && (
+                  <View style={styles.avatar}>
+                    <Text style={{ fontSize: 14 }}>👩‍⚕️</Text>
+                  </View>
+                )}
+                <View style={[styles.bubble, mine ? styles.bubbleMe : styles.bubbleThem]}>
+                  <Text style={[styles.bubbleText, mine && styles.bubbleTextMe]}>
+                    {item.content}
+                  </Text>
+                </View>
               </View>
-            </View>
-          )}
-          ListFooterComponent={typing ? (
-            <View style={styles.bubbleWrap}>
-              <View style={styles.avatar}><Text style={{ fontSize: 14 }}>👩‍⚕️</Text></View>
-              <View style={[styles.bubble, styles.bubbleThem]}>
-                <Text style={styles.bubbleText}>digitando...</Text>
+            );
+          }}
+          ListFooterComponent={
+            typing ? (
+              <View style={styles.bubbleWrap}>
+                <View style={styles.avatar}>
+                  <Text style={{ fontSize: 14 }}>👩‍⚕️</Text>
+                </View>
+                <View style={[styles.bubble, styles.bubbleThem]}>
+                  <Text style={styles.bubbleText}>digitando...</Text>
+                </View>
               </View>
-            </View>
-          ) : null}
+            ) : null
+          }
         />
 
-        {/* QUICK REPLY CHIPS */}
         <ScrollView
           horizontal
           showsHorizontalScrollIndicator={false}
@@ -85,7 +156,12 @@ export function ChatScreen() {
           contentContainerStyle={styles.chipsContent}
         >
           {QUICK_REPLIES.map((q) => (
-            <TouchableOpacity key={q} style={styles.chip} onPress={() => send(q)} activeOpacity={0.7}>
+            <TouchableOpacity
+              key={q}
+              style={styles.chip}
+              onPress={() => send(q)}
+              activeOpacity={0.7}
+            >
               <Text style={styles.chipText}>{q}</Text>
             </TouchableOpacity>
           ))}
@@ -101,7 +177,11 @@ export function ChatScreen() {
             multiline
             maxLength={500}
           />
-          <TouchableOpacity style={styles.sendBtn} onPress={() => send()} activeOpacity={0.8}>
+          <TouchableOpacity
+            style={styles.sendBtn}
+            onPress={() => send()}
+            activeOpacity={0.8}
+          >
             <Text style={styles.sendIcon}>↑</Text>
           </TouchableOpacity>
         </View>

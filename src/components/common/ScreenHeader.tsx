@@ -2,7 +2,7 @@ import React from 'react';
 import { View, Text, TouchableOpacity, StyleSheet } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useNavigation } from '@react-navigation/native';
-import { colors, spacing, typography } from '../theme';
+import { colors, spacing, typography } from '../../theme';
 
 interface Props {
   title: string;

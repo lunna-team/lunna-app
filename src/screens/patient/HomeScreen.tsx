@@ -8,8 +8,10 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { PatientStackParams } from '../../navigation/PatientNavigator';
 import { storage, STORAGE_KEYS } from '../../services/storage';
 import { appointmentsService } from '../../services/appointments';
+import { patientsService } from '../../services/patients';
+import { announcementsService } from '../../services/announcements';
 import { useAuth } from '../../contexts/AuthContext';
-import type { Appointment } from '../../types';
+import type { Appointment, Announcement } from '../../types';
 import { colors, spacing, radius } from '../../theme';
 
 type Nav = NativeStackNavigationProp<PatientStackParams>;
@@ -38,6 +40,8 @@ export function HomeScreen() {
   const { user } = useAuth();
   const [nextAppointment, setNextAppointment] = useState<Appointment | null>(null);
   const [loadingAppt, setLoadingAppt] = useState(true);
+  const [semana, setSemana] = useState(0);
+  const [avisos, setAvisos] = useState<Announcement[]>([]);
 
   useEffect(() => {
     storage.get<boolean>(STORAGE_KEYS.onboarded).then((v) => {
@@ -52,13 +56,22 @@ export function HomeScreen() {
       .then((res) => setNextAppointment(res.data[0] ?? null))
       .catch(() => setNextAppointment(null))
       .finally(() => setLoadingAppt(false));
+    patientsService
+      .getProntuario(user.id)
+      .then((p) => setSemana(p.current_week ?? 0))
+      .catch(() => {});
   }, [user?.id]);
 
-  const firstName = user?.name?.split(' ')[0] ?? 'você';
+  useEffect(() => {
+    if (!user?.clinic_id) return;
+    announcementsService
+      .list(user.clinic_id, { limit: 2 })
+      .then((res) => setAvisos(res.data))
+      .catch(() => {});
+  }, [user?.clinic_id]);
 
-  // Semana gestacional: placeholder fixo — endpoint de prontuário não implementado ainda
-  const semana = 24;
-  const progress = semana / TOTAL_WEEKS;
+  const firstName = user?.name?.split(' ')[0] ?? 'você';
+  const progress = semana > 0 ? semana / TOTAL_WEEKS : 0;
 
   return (
     <View style={{ flex: 1, backgroundColor: colors.bg }}>
@@ -146,14 +159,22 @@ export function HomeScreen() {
             <Text style={styles.sectionLink}>Ver todos</Text>
           </TouchableOpacity>
         </View>
-        <View style={styles.avisoCard}>
-          <View style={styles.avisoBadge}>
-            <Text style={styles.avisoBadgeText}>Novo</Text>
+        {avisos.length === 0 ? (
+          <View style={styles.avisoCard}>
+            <Text style={styles.avisoText}>Nenhum aviso no momento.</Text>
           </View>
-          <Text style={styles.avisoText}>
-            Recesso de Carnaval — Clínica fechada de 1 a 5 de Março
-          </Text>
-        </View>
+        ) : (
+          avisos.map((a) => (
+            <View key={a.id} style={[styles.avisoCard, { marginBottom: 8 }]}>
+              {a.is_new && (
+                <View style={styles.avisoBadge}>
+                  <Text style={styles.avisoBadgeText}>Novo</Text>
+                </View>
+              )}
+              <Text style={styles.avisoText}>{a.title}</Text>
+            </View>
+          ))
+        )}
 
         {/* PRÓXIMA CONSULTA */}
         <TouchableOpacity

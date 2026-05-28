@@ -1,72 +1,142 @@
-import React, { useState } from 'react';
-import { View, Text, StyleSheet, ScrollView, TouchableOpacity, TextInput } from 'react-native';
+import React, { useState, useEffect, useRef } from 'react';
+import {
+  View, Text, StyleSheet, ScrollView, TouchableOpacity, TextInput, ActivityIndicator,
+} from 'react-native';
 import { useNavigation } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { DoctorStackParams } from '../../navigation/DoctorNavigator';
 import { ScreenHeader } from '../../components/common/ScreenHeader';
-import { RiskBadge, Risk } from '../../components/domain/RiskBadge';
+import { RiskBadge } from '../../components/domain/RiskBadge';
+import { patientsService } from '../../services/patients';
+import { useAuth } from '../../contexts/AuthContext';
 import { colors, spacing, radius } from '../../theme';
+import type { PatientDetail, RiskLevel } from '../../types';
 
 type Nav = NativeStackNavigationProp<DoctorStackParams>;
+type RiskFilter = 'todos' | RiskLevel;
 
-const PACIENTES = [
-  { iniciais: 'MS', nome: 'Maria da Silva', prontuario: '2024-00847', semana: 24, risk: 'low' as Risk, proxima: '07 Mar' },
-  { iniciais: 'CM', nome: 'Carla Mendes', prontuario: '2024-00312', semana: 20, risk: 'low' as Risk, proxima: '10 Mar' },
-  { iniciais: 'FC', nome: 'Fernanda Costa', prontuario: '2024-00589', semana: 10, risk: 'med' as Risk, proxima: '08 Mar' },
-  { iniciais: 'JR', nome: 'Juliana Rocha', prontuario: '2024-00201', semana: 32, risk: 'low' as Risk, proxima: '15 Mar' },
-  { iniciais: 'PS', nome: 'Patrícia Souza', prontuario: '2024-00734', semana: 36, risk: 'high' as Risk, proxima: '06 Mar' },
-];
+const RISK_BADGE_MAP: Record<RiskLevel, 'low' | 'med' | 'high'> = {
+  low: 'low', medium: 'med', high: 'high',
+};
+
+function getInitials(name: string): string {
+  return name.split(' ').slice(0, 2).map((n) => n[0]).join('').toUpperCase();
+}
 
 export function MedicoPacientesScreen() {
+  const { user } = useAuth();
   const [busca, setBusca] = useState('');
-  const [filtroRisk, setFiltroRisk] = useState<'todos' | Risk>('todos');
+  const [filtroRisk, setFiltroRisk] = useState<RiskFilter>('todos');
+  const [pacientes, setPacientes] = useState<PatientDetail[]>([]);
+  const [loading, setLoading] = useState(true);
   const navigation = useNavigation<Nav>();
   const insets = useSafeAreaInsets();
+  const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  const filtradas = PACIENTES.filter((p) => {
-    const matchBusca = p.nome.toLowerCase().includes(busca.toLowerCase()) || p.prontuario.includes(busca);
-    const matchRisk = filtroRisk === 'todos' || p.risk === filtroRisk;
-    return matchBusca && matchRisk;
-  });
+  const fetchPacientes = (search: string, risk: RiskFilter) => {
+    if (!user?.id) return;
+    setLoading(true);
+    patientsService
+      .getDoctorPatients(user.id, {
+        search: search || undefined,
+        risk_level: risk !== 'todos' ? risk : undefined,
+        limit: 50,
+      })
+      .then((res) => setPacientes(res.data))
+      .catch(() => setPacientes([]))
+      .finally(() => setLoading(false));
+  };
+
+  useEffect(() => {
+    fetchPacientes('', 'todos');
+  }, [user?.id]);
+
+  const handleBusca = (text: string) => {
+    setBusca(text);
+    if (debounceRef.current) clearTimeout(debounceRef.current);
+    debounceRef.current = setTimeout(() => fetchPacientes(text, filtroRisk), 300);
+  };
+
+  const handleRisk = (risk: RiskFilter) => {
+    setFiltroRisk(risk);
+    fetchPacientes(busca, risk);
+  };
 
   return (
     <View style={[styles.container, { paddingBottom: insets.bottom }]}>
       <ScreenHeader title="Pacientes" />
       <View style={{ paddingHorizontal: spacing.lg, paddingTop: 16, gap: 12 }}>
-        <TextInput style={styles.searchInput} placeholder="Buscar por nome ou prontuário..." placeholderTextColor={colors.textInactive} value={busca} onChangeText={setBusca} />
+        <TextInput
+          style={styles.searchInput}
+          placeholder="Buscar por nome..."
+          placeholderTextColor={colors.textInactive}
+          value={busca}
+          onChangeText={handleBusca}
+        />
         <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 8 }}>
-          {(['todos', 'low', 'med', 'high'] as const).map((r) => (
-            <TouchableOpacity key={r} style={[styles.chip, filtroRisk === r && styles.chipActive]} onPress={() => setFiltroRisk(r)}>
+          {(['todos', 'low', 'medium', 'high'] as RiskFilter[]).map((r) => (
+            <TouchableOpacity
+              key={r}
+              style={[styles.chip, filtroRisk === r && styles.chipActive]}
+              onPress={() => handleRisk(r)}
+            >
               <Text style={[styles.chipText, filtroRisk === r && styles.chipTextActive]}>
-                {r === 'todos' ? 'Todos' : r === 'low' ? 'Baixo risco' : r === 'med' ? 'Atenção' : 'Alto risco'}
+                {r === 'todos' ? 'Todos' : r === 'low' ? 'Baixo risco' : r === 'medium' ? 'Atenção' : 'Alto risco'}
               </Text>
             </TouchableOpacity>
           ))}
         </ScrollView>
       </View>
-      <ScrollView contentContainerStyle={{ padding: spacing.lg, paddingBottom: 40 }}>
-        {filtradas.map((p) => (
-          <TouchableOpacity key={p.prontuario} style={styles.card} onPress={() => navigation.navigate('PacienteDetalhe')} activeOpacity={0.85}>
-            <View style={styles.avatar}><Text style={styles.avatarText}>{p.iniciais}</Text></View>
-            <View style={{ flex: 1 }}>
-              <Text style={styles.nome}>{p.nome}</Text>
-              <Text style={styles.meta}>Prontuário {p.prontuario}</Text>
-              <Text style={styles.meta}>Próxima: {p.proxima}</Text>
-            </View>
-            <View style={{ alignItems: 'flex-end', gap: 6 }}>
-              <View style={styles.weekBadge}><Text style={styles.weekText}>Sem. {p.semana}</Text></View>
-              <RiskBadge risk={p.risk} />
-            </View>
-          </TouchableOpacity>
-        ))}
-      </ScrollView>
+
+      {loading ? (
+        <View style={styles.center}>
+          <ActivityIndicator size="large" color={colors.primary} />
+        </View>
+      ) : (
+        <ScrollView contentContainerStyle={{ padding: spacing.lg, paddingBottom: 40 }}>
+          {pacientes.length === 0 && (
+            <Text style={styles.empty}>Nenhum paciente encontrado.</Text>
+          )}
+          {pacientes.map((p) => (
+            <TouchableOpacity
+              key={p.id}
+              style={styles.card}
+              onPress={() => navigation.navigate('PacienteDetalhe', { patientId: p.id })}
+              activeOpacity={0.85}
+            >
+              <View style={styles.avatar}>
+                <Text style={styles.avatarText}>{getInitials(p.name)}</Text>
+              </View>
+              <View style={{ flex: 1 }}>
+                <Text style={styles.nome}>{p.name}</Text>
+                {p.prontuario && <Text style={styles.meta}>Prontuário {p.prontuario}</Text>}
+                {p.edd && (
+                  <Text style={styles.meta}>
+                    DPP: {new Date(p.edd).toLocaleDateString('pt-BR')}
+                  </Text>
+                )}
+              </View>
+              <View style={{ alignItems: 'flex-end', gap: 6 }}>
+                {p.current_week != null && (
+                  <View style={styles.weekBadge}>
+                    <Text style={styles.weekText}>Sem. {p.current_week}</Text>
+                  </View>
+                )}
+                <RiskBadge risk={RISK_BADGE_MAP[p.risk_level]} />
+              </View>
+            </TouchableOpacity>
+          ))}
+        </ScrollView>
+      )}
     </View>
   );
 }
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: colors.bg },
+  center: { flex: 1, justifyContent: 'center', alignItems: 'center' },
+  empty: { textAlign: 'center', color: colors.textMid, fontSize: 14, marginTop: 40 },
   searchInput: { backgroundColor: colors.white, borderRadius: radius.md, padding: 14, fontSize: 14, color: colors.text, shadowColor: '#000', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.04, shadowRadius: 8, elevation: 2 },
   chip: { paddingHorizontal: 14, paddingVertical: 8, borderRadius: radius.full, backgroundColor: colors.white },
   chipActive: { backgroundColor: colors.primary },

@@ -1,31 +1,31 @@
-import React from 'react';
-import { View, Text, StyleSheet, ScrollView, TouchableOpacity, StatusBar } from 'react-native';
+import React, { useState, useEffect } from 'react';
+import { View, Text, StyleSheet, ScrollView, TouchableOpacity, StatusBar, ActivityIndicator } from 'react-native';
 import Svg, { Path, Rect, Line, Circle, Polyline } from 'react-native-svg';
 import { useNavigation } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { DoctorStackParams } from '../../navigation/DoctorNavigator';
 import { RiskBadge } from '../../components/domain/RiskBadge';
+import { patientsService } from '../../services/patients';
+import { useAuth } from '../../contexts/AuthContext';
 import { colors, spacing, radius } from '../../theme';
+import type { DoctorDashboard, AgendaItem, PatientDetail, RiskLevel } from '../../types';
 
 type Nav = NativeStackNavigationProp<DoctorStackParams>;
 
 const NAV_H = 72;
 
-const AGENDA = [
-  { hora: '08:30', dur: '30 min', paciente: 'Maria da Silva', tipo: 'Pré-natal de rotina · Sem. 24', status: 'done' },
-  { hora: '09:00', dur: '30 min', paciente: 'Carla Mendes', tipo: 'Ultrassom morfológico · Sem. 20', status: 'done' },
-  { hora: '10:00', dur: '45 min', paciente: 'Fernanda Costa', tipo: 'Consulta 1º trimestre · Sem. 10', status: 'now' },
-  { hora: '11:00', dur: '30 min', paciente: 'Juliana Rocha', tipo: 'Retorno pós-exames · Sem. 32', status: 'next' },
-];
+const RISK_BADGE_MAP: Record<RiskLevel, 'low' | 'med' | 'high'> = {
+  low: 'low', medium: 'med', high: 'high',
+};
 
-const PACIENTES = [
-  { iniciais: 'MS', nome: 'Maria da Silva', meta: 'DPP: 20 Jun · Última consulta: hoje', semana: 24, risk: 'low' as const, alerta: '1 exame aguardando análise', alertaRed: false },
-  { iniciais: 'CM', nome: 'Carla Mendes', meta: 'DPP: 15 Ago · Última consulta: hoje', semana: 20, risk: 'low' as const, alerta: null, alertaRed: false },
-  { iniciais: 'FC', nome: 'Fernanda Costa', meta: 'DPP: 10 Set · Última consulta: hoje', semana: 10, risk: 'med' as const, alerta: 'Glicemia elevada — verificar', alertaRed: false },
-  { iniciais: 'JR', nome: 'Juliana Rocha', meta: 'DPP: 02 Mai · Última consulta: 28 Fev', semana: 32, risk: 'low' as const, alerta: null, alertaRed: false },
-  { iniciais: 'PS', nome: 'Patrícia Souza', meta: 'DPP: 18 Abr · Última consulta: 20 Fev', semana: 36, risk: 'high' as const, alerta: 'Pressão elevada — acompanhar', alertaRed: true },
-];
+function getInitials(name: string): string {
+  return name.split(' ').slice(0, 2).map((n) => n[0]).join('').toUpperCase();
+}
+
+function durationLabel(minutes: number): string {
+  return minutes >= 60 ? `${minutes / 60}h` : `${minutes}min`;
+}
 
 // ── SVG ICONS ────────────────────────────────────────────────────────────────
 
@@ -94,9 +94,37 @@ function IconAlert({ red }: { red?: boolean }) {
 
 // ─────────────────────────────────────────────────────────────────────────────
 
+function currentDatePt(): string {
+  return new Date().toLocaleDateString('pt-BR', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' });
+}
+
 export function DashboardMedicoScreen() {
+  const { user } = useAuth();
   const navigation = useNavigation<Nav>();
   const insets = useSafeAreaInsets();
+  const [dashboard, setDashboard] = useState<DoctorDashboard | null>(null);
+  const [agenda, setAgenda] = useState<AgendaItem[]>([]);
+  const [pacientes, setPacientes] = useState<PatientDetail[]>([]);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    if (!user?.id) return;
+    Promise.all([
+      patientsService.getDoctorDashboard(user.id),
+      patientsService.getDoctorAgenda(user.id, 'day'),
+      patientsService.getDoctorPatients(user.id, { limit: 5 }),
+    ])
+      .then(([db, ag, pt]) => {
+        setDashboard(db);
+        setAgenda(ag.data);
+        setPacientes(pt.data);
+      })
+      .catch(() => {})
+      .finally(() => setLoading(false));
+  }, [user?.id]);
+
+  const firstName = user?.name?.split(' ')[0] ?? '';
+  const greeting = `Bom dia, ${firstName} 👋`;
 
   return (
     <View style={{ flex: 1, backgroundColor: colors.bg }}>
@@ -107,11 +135,11 @@ export function DashboardMedicoScreen() {
         <View style={[styles.header, { paddingTop: insets.top + 20 }]}>
           <View>
             <Text style={styles.role}>Painel Médico</Text>
-            <Text style={styles.name}>Bom dia, Dra. Ana 👋</Text>
-            <Text style={styles.date}>Segunda-feira, 3 de Março de 2025</Text>
+            <Text style={styles.name}>{greeting}</Text>
+            <Text style={styles.date}>{currentDatePt()}</Text>
           </View>
           <View style={styles.avatar}>
-            <Text style={styles.avatarText}>AL</Text>
+            <Text style={styles.avatarText}>{getInitials(user?.name ?? '??')}</Text>
           </View>
         </View>
 
@@ -124,9 +152,9 @@ export function DashboardMedicoScreen() {
         {/* STATS */}
         <View style={styles.statsRow}>
           {([
-            ['8', 'Consultas hoje', colors.primaryDk],
-            ['24', 'Pacientes ativas', colors.text],
-            ['3', 'Exames pendentes', colors.accent],
+            [String(dashboard?.today_appointments ?? '—'), 'Consultas hoje', colors.primaryDk],
+            [String(dashboard?.active_patients ?? '—'), 'Pacientes ativas', colors.text],
+            [String(dashboard?.pending_exams ?? '—'), 'Exames pendentes', colors.accent],
           ] as [string, string, string][]).map(([v, l, c]) => (
             <View key={l} style={styles.statCard}>
               <Text style={[styles.statNum, { color: c }]}>{v}</Text>
@@ -135,91 +163,100 @@ export function DashboardMedicoScreen() {
           ))}
         </View>
 
-        {/* AGENDA */}
-        <View style={styles.sectionWrap}>
-          <View style={styles.sectionRow}>
-            <Text style={styles.sectionTitle}>Agenda de Hoje</Text>
-            <TouchableOpacity onPress={() => navigation.navigate('AgendaMedico')}>
-              <Text style={styles.sectionLink}>Ver tudo</Text>
-            </TouchableOpacity>
-          </View>
-          {AGENDA.map((a) => (
-            <View
-              key={a.hora}
-              style={[styles.apptCard, a.status === 'now' && { borderWidth: 1.5, borderColor: colors.accent }]}
-            >
-              <View style={styles.timeCol}>
-                <Text style={[styles.hora, a.status === 'now' && { color: colors.accent }]}>{a.hora}</Text>
-                <Text style={styles.dur}>{a.dur}</Text>
+        {loading ? (
+          <View style={styles.center}><ActivityIndicator size="large" color={colors.primary} /></View>
+        ) : (
+          <>
+            {/* AGENDA */}
+            <View style={styles.sectionWrap}>
+              <View style={styles.sectionRow}>
+                <Text style={styles.sectionTitle}>Agenda de Hoje</Text>
+                <TouchableOpacity onPress={() => navigation.navigate('AgendaMedico')}>
+                  <Text style={styles.sectionLink}>Ver tudo</Text>
+                </TouchableOpacity>
               </View>
-              <View style={[
-                styles.divider,
-                a.status === 'done' ? styles.divDone : a.status === 'now' ? styles.divNow : styles.divNext,
-              ]} />
-              <View style={{ flex: 1, minWidth: 0 }}>
-                <Text style={styles.apptName} numberOfLines={1}>{a.paciente}</Text>
-                <Text style={styles.apptType}>{a.tipo}</Text>
-              </View>
-              <View style={[
-                styles.apptBadge,
-                a.status === 'done' ? styles.bdDone : a.status === 'now' ? styles.bdNow : styles.bdNext,
-              ]}>
-                <Text style={[
-                  styles.apptBadgeText,
-                  { color: a.status === 'done' ? colors.primaryDk : a.status === 'now' ? colors.accent : colors.textMid },
-                ]}>
-                  {a.status === 'done' ? 'Realizada' : a.status === 'now' ? 'Agora' : 'Próxima'}
-                </Text>
-              </View>
-            </View>
-          ))}
-        </View>
-
-        {/* PACIENTES */}
-        <View style={[styles.sectionWrap, { marginTop: 24 }]}>
-          <View style={styles.sectionRow}>
-            <Text style={styles.sectionTitle}>Minhas Pacientes</Text>
-            <TouchableOpacity onPress={() => navigation.navigate('MedicoPacientes')}>
-              <Text style={styles.sectionLink}>Ver todas</Text>
-            </TouchableOpacity>
-          </View>
-          {PACIENTES.map((p) => (
-            <TouchableOpacity
-              key={p.nome}
-              style={styles.patientCard}
-              onPress={() => navigation.navigate('PacienteDetalhe')}
-              activeOpacity={0.85}
-            >
-              <View style={[
-                styles.pAvatar,
-                p.risk === 'high' && { backgroundColor: 'rgba(225,91,91,0.12)' },
-                p.risk === 'med' && { backgroundColor: 'rgba(245,166,35,0.15)' },
-              ]}>
-                <Text style={[
-                  styles.pAvatarText,
-                  p.risk === 'high' && { color: '#B33A3A' },
-                  p.risk === 'med' && { color: '#B87A00' },
-                ]}>{p.iniciais}</Text>
-              </View>
-              <View style={{ flex: 1, minWidth: 0 }}>
-                <Text style={styles.pName} numberOfLines={1}>{p.nome}</Text>
-                <Text style={styles.pMeta}>{p.meta}</Text>
-                {p.alerta && (
-                  <View style={[styles.alertChip, p.alertaRed && { backgroundColor: 'rgba(225,91,91,0.1)' }]}>
-                    <IconAlert red={p.alertaRed} />
-                    <Text style={[styles.alertText, p.alertaRed && { color: colors.red }]}>{p.alerta}</Text>
+              {agenda.length === 0 && <Text style={styles.empty}>Nenhum item na agenda de hoje.</Text>}
+              {agenda.slice(0, 4).map((a) => (
+                <View
+                  key={a.id}
+                  style={[styles.apptCard, a.status === 'now' && { borderWidth: 1.5, borderColor: colors.accent }]}
+                >
+                  <View style={styles.timeCol}>
+                    <Text style={[styles.hora, a.status === 'now' && { color: colors.accent }]}>{a.hora}</Text>
+                    <Text style={styles.dur}>{durationLabel(a.duration_minutes)}</Text>
                   </View>
-                )}
-              </View>
-              <View style={styles.pRight}>
-                <View style={styles.weekBadge}>
-                  <Text style={styles.weekBadgeText}>Sem. {p.semana}</Text>
+                  <View style={[
+                    styles.divider,
+                    a.status === 'done' ? styles.divDone : a.status === 'now' ? styles.divNow : styles.divNext,
+                  ]} />
+                  <View style={{ flex: 1, minWidth: 0 }}>
+                    <Text style={styles.apptName} numberOfLines={1}>{a.patient_name}</Text>
+                    <Text style={styles.apptType}>{a.type}</Text>
+                  </View>
+                  <View style={[
+                    styles.apptBadge,
+                    a.status === 'done' ? styles.bdDone : a.status === 'now' ? styles.bdNow : styles.bdNext,
+                  ]}>
+                    <Text style={[
+                      styles.apptBadgeText,
+                      { color: a.status === 'done' ? colors.primaryDk : a.status === 'now' ? colors.accent : colors.textMid },
+                    ]}>
+                      {a.status === 'done' ? 'Realizada' : a.status === 'now' ? 'Agora' : 'Próxima'}
+                    </Text>
+                  </View>
                 </View>
-                <RiskBadge risk={p.risk} />
+              ))}
+            </View>
+
+            {/* PACIENTES */}
+            <View style={[styles.sectionWrap, { marginTop: 24 }]}>
+              <View style={styles.sectionRow}>
+                <Text style={styles.sectionTitle}>Minhas Pacientes</Text>
+                <TouchableOpacity onPress={() => navigation.navigate('MedicoPacientes')}>
+                  <Text style={styles.sectionLink}>Ver todas</Text>
+                </TouchableOpacity>
               </View>
-            </TouchableOpacity>
-          ))}
-        </View>
+              {pacientes.map((p) => {
+                const risk = RISK_BADGE_MAP[p.risk_level];
+                return (
+                  <TouchableOpacity
+                    key={p.id}
+                    style={styles.patientCard}
+                    onPress={() => navigation.navigate('PacienteDetalhe', { patientId: p.id })}
+                    activeOpacity={0.85}
+                  >
+                    <View style={[
+                      styles.pAvatar,
+                      p.risk_level === 'high' && { backgroundColor: 'rgba(225,91,91,0.12)' },
+                      p.risk_level === 'medium' && { backgroundColor: 'rgba(245,166,35,0.15)' },
+                    ]}>
+                      <Text style={[
+                        styles.pAvatarText,
+                        p.risk_level === 'high' && { color: '#B33A3A' },
+                        p.risk_level === 'medium' && { color: '#B87A00' },
+                      ]}>{getInitials(p.name)}</Text>
+                    </View>
+                    <View style={{ flex: 1, minWidth: 0 }}>
+                      <Text style={styles.pName} numberOfLines={1}>{p.name}</Text>
+                      <Text style={styles.pMeta}>
+                        {p.edd ? `DPP: ${new Date(p.edd).toLocaleDateString('pt-BR', { day: '2-digit', month: 'short' })}` : ''}
+                        {p.current_week ? ` · Sem. ${p.current_week}` : ''}
+                      </Text>
+                    </View>
+                    <View style={styles.pRight}>
+                      {p.current_week != null && (
+                        <View style={styles.weekBadge}>
+                          <Text style={styles.weekBadgeText}>Sem. {p.current_week}</Text>
+                        </View>
+                      )}
+                      <RiskBadge risk={risk} />
+                    </View>
+                  </TouchableOpacity>
+                );
+              })}
+            </View>
+          </>
+        )}
       </ScrollView>
 
       {/* BOTTOM NAV */}
@@ -305,6 +342,8 @@ const styles = StyleSheet.create({
   weekBadge: { backgroundColor: colors.primaryLight, paddingHorizontal: 10, paddingVertical: 4, borderRadius: radius.full },
   weekBadgeText: { fontSize: 11, fontWeight: '700', color: colors.primaryDk },
 
+  center: { paddingTop: 40, alignItems: 'center' },
+  empty: { fontSize: 13, color: colors.textMid, textAlign: 'center', marginBottom: 16 },
   bottomNav: {
     position: 'absolute',
     bottom: 0,

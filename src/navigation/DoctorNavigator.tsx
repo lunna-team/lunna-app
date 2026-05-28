@@ -8,7 +8,7 @@ import { AgendaMedicoScreen } from '../screens/doctor/AgendaMedicoScreen';
 export type DoctorStackParams = {
   DashboardMedico: undefined;
   MedicoPacientes: undefined;
-  PacienteDetalhe: undefined;
+  PacienteDetalhe: { patientId: string };
   AgendaMedico: undefined;
 };
 

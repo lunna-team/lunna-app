@@ -1,80 +1,65 @@
 import React, { useState, useEffect } from 'react';
 import {
   View, Text, StyleSheet, ScrollView, TouchableOpacity, TextInput,
-  Modal, TouchableWithoutFeedback,
+  Modal, TouchableWithoutFeedback, ActivityIndicator,
 } from 'react-native';
+import { useRoute, RouteProp } from '@react-navigation/native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { DoctorStackParams } from '../../navigation/DoctorNavigator';
 import { ScreenHeader } from '../../components/common/ScreenHeader';
+import { patientsService } from '../../services/patients';
+import { vitalsService } from '../../services/vitals';
+import { appointmentsService } from '../../services/appointments';
+import { examsService } from '../../services/exams';
 import { storage, STORAGE_KEYS } from '../../services/storage';
 import { colors, spacing, radius } from '../../theme';
+import type {
+  PatientDetail, PatientProntuario,
+  BloodPressureReading, GlucoseReading, GlucoseMoment,
+  Appointment, Ultrasound, LabTest, Vaccine, VaccineStatus,
+} from '../../types';
 
-// ── Types ────────────────────────────────────────────────────────────────────
-
+type RouteType = RouteProp<DoctorStackParams, 'PacienteDetalhe'>;
 type Tab = 'geral' | 'sinais' | 'consultas' | 'usg' | 'exames' | 'vacinas';
 
-interface Consulta { id: number; data: string; ig: string; pa: string; peso: string; bcf: string; obs: string; }
-interface USG { id: number; tipo: string; data: string; ig: string; apresentacao: string; la: string; bcf: string; peso: string; }
-interface Exame { id: number; data: string; hb: string; glicemia: string; tsh: string; obs: string; }
-interface Vacina { id: number; nome: string; data: string; dose: string; status: 'aplicada' | 'agendada' | 'nao'; }
-interface PressaoItem { id: number; sistolica: number; diastolica: number; momento: string; }
-interface GlicoseItem { id: number; valor: number; momento: string; }
-
-// ── Mock data ─────────────────────────────────────────────────────────────────
-
-const CONSULTAS_MOCK: Consulta[] = [
-  { id: 1, data: '03 Mar 2025', ig: '24ª sem', pa: '118/76', peso: '67,3 kg', bcf: '148 bpm', obs: 'Evolução normal. Orientações nutricionais.' },
-  { id: 2, data: '14 Fev 2025', ig: '20ª sem', pa: '115/74', peso: '65,2 kg', bcf: '152 bpm', obs: 'USG morfológico solicitado.' },
-  { id: 3, data: '17 Jan 2025', ig: '16ª sem', pa: '112/72', peso: '63,4 kg', bcf: '144 bpm', obs: 'Exames do 2º trimestre solicitados.' },
-];
-
-const USG_MOCK: USG[] = [
-  { id: 1, tipo: 'Morfológico 2º trimestre', data: '20 Fev 2025', ig: '21ª sem', apresentacao: 'Cefálica', la: 'Normal (ILA 12)', bcf: '150 bpm', peso: '480g' },
-  { id: 2, tipo: 'Translucência nucal', data: '12 Nov 2024', ig: '12ª sem', apresentacao: '—', la: '—', bcf: '168 bpm', peso: '60g' },
-];
-
-const EXAMES_MOCK: Exame[] = [
-  { id: 1, data: '14 Fev 2025', hb: '11,2 g/dL', glicemia: '88 mg/dL', tsh: '2,1 uUI/mL', obs: 'Anemia leve. Suplementação mantida.' },
-  { id: 2, data: '10 Nov 2024', hb: '12,4 g/dL', glicemia: '82 mg/dL', tsh: '1,8 uUI/mL', obs: 'Dentro da normalidade.' },
-];
-
-const VACINAS_MOCK: Vacina[] = [
-  { id: 1, nome: 'dTpa', data: '08 Nov 2024', dose: 'Única', status: 'aplicada' },
-  { id: 2, nome: 'Influenza', data: '15 Mar 2025', dose: 'Anual', status: 'agendada' },
-  { id: 3, nome: 'Hepatite B', data: '—', dose: '3ª dose', status: 'nao' },
-  { id: 4, nome: 'Covid-19', data: '02 Out 2024', dose: 'Reforço', status: 'aplicada' },
-];
-
-const PRESS_MOCK: PressaoItem[] = [
-  { id: 1, sistolica: 118, diastolica: 76, momento: 'Manhã' },
-  { id: 2, sistolica: 122, diastolica: 80, momento: 'Tarde' },
-];
-const GLIC_MOCK: GlicoseItem[] = [
-  { id: 1, valor: 88, momento: 'Jejum' },
-  { id: 2, valor: 132, momento: '2h pós-refeição' },
+const TABS: { key: Tab; label: string }[] = [
+  { key: 'geral', label: 'Geral' },
+  { key: 'sinais', label: 'Sinais Vitais' },
+  { key: 'consultas', label: 'Consultas' },
+  { key: 'usg', label: 'USG' },
+  { key: 'exames', label: 'Exames' },
+  { key: 'vacinas', label: 'Vacinas' },
 ];
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
-const classifyPA = (s: number, d: number) => {
-  if (s >= 140 || d >= 90) return { label: 'Hipertensão', color: colors.red };
-  if (s >= 130 || d >= 80) return { label: 'Grau 1', color: colors.accent };
+const classifyPA = (sys: number, dia: number) => {
+  if (sys >= 140 || dia >= 90) return { label: 'Hipertensão', color: colors.red };
+  if (sys >= 130 || dia >= 80) return { label: 'Grau 1', color: colors.accent };
   return { label: 'Normal', color: '#3CB371' };
 };
 
 const classifyGlic = (v: number, m: string) => {
-  const jejum = m.toLowerCase().includes('jejum');
+  const jejum = m === 'fasting';
   if (jejum ? v > 95 : v >= 140) return { label: 'Atenção', color: colors.yellow };
   return { label: 'Normal', color: '#3CB371' };
 };
 
-const vacinaColor = (s: Vacina['status']) =>
-  s === 'aplicada' ? { bg: 'rgba(141,170,145,0.15)', color: colors.primaryDk, label: 'Aplicada' }
-  : s === 'agendada' ? { bg: 'rgba(245,166,35,0.15)', color: '#8a5e00', label: 'Agendada' }
-  : { bg: 'rgba(0,0,0,0.06)', color: colors.textInactive, label: 'Não aplicada' };
+const VACCINE_STATUS_LABELS: Record<VaccineStatus, { bg: string; color: string; label: string }> = {
+  completed: { bg: 'rgba(141,170,145,0.15)', color: colors.primaryDk, label: 'Aplicada' },
+  scheduled: { bg: 'rgba(245,166,35,0.15)', color: '#8a5e00', label: 'Agendada' },
+  missed: { bg: 'rgba(0,0,0,0.06)', color: colors.textInactive, label: 'Não aplicada' },
+};
 
-// ── Sheet (bottom modal) ───────────────────────────────────────────────────────
+function formatDate(iso: string): string {
+  return new Date(iso).toLocaleDateString('pt-BR');
+}
 
-function Sheet({ visible, onClose, title, children }: { visible: boolean; onClose: () => void; title: string; children: React.ReactNode }) {
+// ── Reusable components ───────────────────────────────────────────────────────
+
+function Sheet({ visible, onClose, title, children }: {
+  visible: boolean; onClose: () => void; title: string; children: React.ReactNode;
+}) {
   const insets = useSafeAreaInsets();
   return (
     <Modal visible={visible} transparent animationType="slide" onRequestClose={onClose}>
@@ -84,17 +69,15 @@ function Sheet({ visible, onClose, title, children }: { visible: boolean; onClos
       <View style={[s.sheet, { paddingBottom: insets.bottom + 16 }]}>
         <View style={s.handle} />
         <Text style={s.sheetTitle}>{title}</Text>
-        <ScrollView keyboardShouldPersistTaps="handled">
-          {children}
-        </ScrollView>
+        <ScrollView keyboardShouldPersistTaps="handled">{children}</ScrollView>
       </View>
     </Modal>
   );
 }
 
-// ── Field ─────────────────────────────────────────────────────────────────────
-
-function Field({ label, value, onChange, multiline, placeholder }: { label: string; value: string; onChange: (v: string) => void; multiline?: boolean; placeholder?: string }) {
+function Field({ label, value, onChange, multiline, placeholder }: {
+  label: string; value: string; onChange: (v: string) => void; multiline?: boolean; placeholder?: string;
+}) {
   return (
     <View style={{ marginBottom: 12 }}>
       <Text style={s.fieldLabel}>{label}</Text>
@@ -109,8 +92,6 @@ function Field({ label, value, onChange, multiline, placeholder }: { label: stri
     </View>
   );
 }
-
-// ── Expandable card ───────────────────────────────────────────────────────────
 
 function ExpandCard({ header, children }: { header: React.ReactNode; children: React.ReactNode }) {
   const [open, setOpen] = useState(false);
@@ -129,104 +110,105 @@ function Row({ children }: { children: React.ReactNode }) {
   return <View style={{ flexDirection: 'row', gap: 10 }}>{children}</View>;
 }
 
-// ── Tabs ──────────────────────────────────────────────────────────────────────
-
-const TABS: { key: Tab; label: string }[] = [
-  { key: 'geral', label: 'Geral' },
-  { key: 'sinais', label: 'Sinais Vitais' },
-  { key: 'consultas', label: 'Consultas' },
-  { key: 'usg', label: 'USG' },
-  { key: 'exames', label: 'Exames' },
-  { key: 'vacinas', label: 'Vacinas' },
-];
-
 // ── GERAL TAB ─────────────────────────────────────────────────────────────────
 
-function GeralTab() {
+function GeralTab({ patientId }: { patientId: string }) {
+  const [patient, setPatient] = useState<PatientDetail | null>(null);
+  const [prontuario, setProntuario] = useState<PatientProntuario | null>(null);
   const [notas, setNotas] = useState('');
-  const [editIdent, setEditIdent] = useState(false);
+  const [loading, setLoading] = useState(true);
   const [editClin, setEditClin] = useState(false);
-  const [editEsp, setEditEsp] = useState(false);
-
-  // Identificação fields
-  const [nomeBebe, setNomeBebe] = useState('Aurora');
-  const [acomp, setAcomp] = useState('Carlos Silva');
-  const [hospital, setHospital] = useState('Hospital São Luiz');
-  const [paridade, setParidade] = useState('G1P0');
-  const [fetos, setFetos] = useState('1');
-  const [fatores, setFatores] = useState('Nenhum');
-  const [altura, setAltura] = useState('165 cm');
-  const [pesoIni, setPesoIni] = useState('62 kg');
-  const [dpp, setDpp] = useState('06/06/2026');
-
-  // Dados clínicos fields
-  const [alergias, setAlergias] = useState('Dipirona');
-  const [meds, setMeds] = useState('Ácido fólico 5mg · Sulfato ferroso 40mg');
-  const [doencas, setDoencas] = useState('Nenhuma');
-  const [cirurgias, setCirurgias] = useState('Nenhuma');
-  const [antecedentes, setAntecedentes] = useState('Mãe: HAS · Pai: DM2');
-  const [profissao, setProfissao] = useState('Professora');
-  const [vicios, setVicios] = useState('Não fuma · Sem álcool');
-
-  // Exames especiais
-  const [tipoSang, setTipoSang] = useState('A+');
-  const [nipt, setNipt] = useState('Não realizado');
-  const [totg0, setTotg0] = useState('88');
-  const [totg1, setTotg1] = useState('165');
-  const [totg2, setTotg2] = useState('138');
-  const [strep, setStrep] = useState('Não testado');
+  const [alergias, setAlergias] = useState('');
+  const [saving, setSaving] = useState(false);
 
   useEffect(() => {
-    storage.get<string>(STORAGE_KEYS.notasMedica).then((v) => { if (v) setNotas(v); });
-  }, []);
+    Promise.all([
+      patientsService.getPatient(patientId),
+      patientsService.getProntuario(patientId),
+      storage.get<string>(STORAGE_KEYS.notasMedica),
+    ])
+      .then(([pt, pr, nota]) => {
+        setPatient(pt);
+        setProntuario(pr);
+        setAlergias(pr.allergies ?? '');
+        if (nota) setNotas(nota);
+      })
+      .catch(() => {})
+      .finally(() => setLoading(false));
+  }, [patientId]);
 
   const saveNotas = async (text: string) => {
     setNotas(text);
     await storage.set(STORAGE_KEYS.notasMedica, text);
   };
 
+  const saveClin = async () => {
+    setSaving(true);
+    try {
+      const updated = await patientsService.updateProntuario(patientId, { allergies: alergias });
+      setProntuario(updated);
+    } catch {
+    } finally {
+      setSaving(false);
+      setEditClin(false);
+    }
+  };
+
   const infoRow = (label: string, value: string) => (
     <View key={label} style={s.infoRow}>
       <Text style={s.infoKey}>{label}</Text>
-      <Text style={s.infoVal}>{value}</Text>
+      <Text style={s.infoVal}>{value || '—'}</Text>
     </View>
   );
 
+  if (loading) {
+    return <View style={s.center}><ActivityIndicator size="large" color={colors.primary} /></View>;
+  }
+
   return (
     <ScrollView contentContainerStyle={{ padding: spacing.lg, paddingBottom: 40 }}>
-      {/* Patient card */}
       <View style={s.darkCard}>
         <View style={{ flexDirection: 'row', alignItems: 'center', gap: 14 }}>
-          <View style={s.darkAvatar}><Text style={s.darkAvatarText}>MS</Text></View>
+          <View style={s.darkAvatar}>
+            <Text style={s.darkAvatarText}>
+              {(patient?.name ?? '??').split(' ').slice(0, 2).map((n) => n[0]).join('')}
+            </Text>
+          </View>
           <View>
-            <Text style={s.darkName}>Maria da Silva</Text>
-            <Text style={s.darkMeta}>28 anos · A+ · G1P0</Text>
+            <Text style={s.darkName}>{patient?.name ?? '—'}</Text>
+            <Text style={s.darkMeta}>
+              {[patient?.blood_type, prontuario?.current_week ? `Sem. ${prontuario.current_week}` : null]
+                .filter(Boolean).join(' · ')}
+            </Text>
           </View>
         </View>
         <View style={s.chipRow}>
-          {['Sem. 32/42', 'DPP: 06 Jun', 'Cefálico', '1ª gestação'].map((c, i) => (
-            <View key={c} style={[s.chip, i === 3 && s.chipAccent]}><Text style={[s.chipText, i === 3 && s.chipTextAccent]}>{c}</Text></View>
-          ))}
+          {prontuario?.current_week && (
+            <View style={s.chip}><Text style={s.chipText}>Sem. {prontuario.current_week}/42</Text></View>
+          )}
+          {prontuario?.edd && (
+            <View style={s.chip}>
+              <Text style={s.chipText}>DPP: {formatDate(prontuario.edd)}</Text>
+            </View>
+          )}
+          {prontuario?.fetal_position && (
+            <View style={s.chip}><Text style={s.chipText}>{prontuario.fetal_position}</Text></View>
+          )}
         </View>
       </View>
 
-      {/* Identificação */}
       <View style={[s.infoCard, { marginBottom: 12 }]}>
         <View style={s.infoCardHeader}>
-          <Text style={s.infoCardTitle}>Identificação</Text>
-          <TouchableOpacity style={s.editBtn} onPress={() => setEditIdent(true)}>
-            <Text style={s.editBtnText}>✏️ Editar</Text>
-          </TouchableOpacity>
+          <Text style={s.infoCardTitle}>Prontuário</Text>
+          {patient?.prontuario && <Text style={s.infoKey}>{patient.prontuario}</Text>}
         </View>
-        {infoRow('Nome do bebê', nomeBebe)}
-        {infoRow('Acompanhante', acomp)}
-        {infoRow('Hospital', hospital)}
-        {infoRow('Paridade', paridade)}
-        {infoRow('Altura / Peso', `${altura} · ${pesoIni}`)}
-        {infoRow('DPP', dpp)}
+        {infoRow('Tipo sanguíneo', patient?.blood_type ?? '—')}
+        {infoRow('Alergias', prontuario?.allergies ?? '—')}
+        {infoRow('DUM', prontuario?.lmp_date ? formatDate(prontuario.lmp_date) : '—')}
+        {infoRow('DPP', prontuario?.edd ? formatDate(prontuario.edd) : '—')}
+        {infoRow('Posição fetal', prontuario?.fetal_position ?? '—')}
       </View>
 
-      {/* Dados Clínicos */}
       <View style={[s.infoCard, { marginBottom: 12 }]}>
         <View style={s.infoCardHeader}>
           <Text style={s.infoCardTitle}>Dados Clínicos</Text>
@@ -234,30 +216,11 @@ function GeralTab() {
             <Text style={s.editBtnText}>✏️ Editar</Text>
           </TouchableOpacity>
         </View>
-        {infoRow('Alergias', alergias)}
-        {infoRow('Medicamentos', meds)}
-        {infoRow('Doenças crônicas', doencas)}
-        {infoRow('Cirurgias', cirurgias)}
-        {infoRow('Antecedentes fam.', antecedentes)}
-        {infoRow('Profissão', profissao)}
-        {infoRow('Vícios', vicios)}
+        {infoRow('Alergias', alergias || '—')}
+        {infoRow('E-mail', patient?.email ?? '—')}
+        {infoRow('Telefone', patient?.phone ?? '—')}
       </View>
 
-      {/* Exames Especiais */}
-      <View style={[s.infoCard, { marginBottom: 12 }]}>
-        <View style={s.infoCardHeader}>
-          <Text style={s.infoCardTitle}>Exames Especiais</Text>
-          <TouchableOpacity style={s.editBtn} onPress={() => setEditEsp(true)}>
-            <Text style={s.editBtnText}>✏️ Editar</Text>
-          </TouchableOpacity>
-        </View>
-        {infoRow('Tipo sanguíneo', tipoSang)}
-        {infoRow('NIPT', nipt)}
-        {infoRow('TOTG (jejum/1h/2h)', `${totg0} / ${totg1} / ${totg2} mg/dL`)}
-        {infoRow('Estreptococo B', strep)}
-      </View>
-
-      {/* Notas */}
       <View style={s.notasCard}>
         <Text style={s.notasTitle}>🔒 Notas da Médica — Conteúdo privado</Text>
         <TextInput
@@ -270,51 +233,10 @@ function GeralTab() {
         />
       </View>
 
-      {/* MODALS */}
-      <Sheet visible={editIdent} onClose={() => setEditIdent(false)} title="Editar Identificação">
-        <Field label="Nome do bebê" value={nomeBebe} onChange={setNomeBebe} />
-        <Field label="Acompanhante" value={acomp} onChange={setAcomp} />
-        <Field label="Hospital" value={hospital} onChange={setHospital} />
-        <Row>
-          <View style={{ flex: 1 }}><Field label="Paridade" value={paridade} onChange={setParidade} /></View>
-          <View style={{ flex: 1 }}><Field label="Nº fetos" value={fetos} onChange={setFetos} /></View>
-        </Row>
-        <Field label="Fatores de risco" value={fatores} onChange={setFatores} multiline />
-        <Row>
-          <View style={{ flex: 1 }}><Field label="Altura" value={altura} onChange={setAltura} /></View>
-          <View style={{ flex: 1 }}><Field label="Peso inicial" value={pesoIni} onChange={setPesoIni} /></View>
-        </Row>
-        <Field label="DPP" value={dpp} onChange={setDpp} />
-        <TouchableOpacity style={s.saveBtn} onPress={() => setEditIdent(false)}>
-          <Text style={s.saveBtnText}>Salvar</Text>
-        </TouchableOpacity>
-      </Sheet>
-
       <Sheet visible={editClin} onClose={() => setEditClin(false)} title="Editar Dados Clínicos">
         <Field label="Alergias" value={alergias} onChange={setAlergias} />
-        <Field label="Medicamentos" value={meds} onChange={setMeds} multiline />
-        <Field label="Doenças crônicas" value={doencas} onChange={setDoencas} />
-        <Field label="Cirurgias anteriores" value={cirurgias} onChange={setCirurgias} />
-        <Field label="Antecedentes familiares" value={antecedentes} onChange={setAntecedentes} multiline />
-        <Field label="Profissão" value={profissao} onChange={setProfissao} />
-        <Field label="Vícios e hábitos" value={vicios} onChange={setVicios} />
-        <TouchableOpacity style={s.saveBtn} onPress={() => setEditClin(false)}>
-          <Text style={s.saveBtnText}>Salvar</Text>
-        </TouchableOpacity>
-      </Sheet>
-
-      <Sheet visible={editEsp} onClose={() => setEditEsp(false)} title="Editar Exames Especiais">
-        <Field label="Tipo sanguíneo" value={tipoSang} onChange={setTipoSang} />
-        <Field label="NIPT" value={nipt} onChange={setNipt} />
-        <Text style={s.fieldLabel}>TOTG (mg/dL)</Text>
-        <Row>
-          <View style={{ flex: 1 }}><Field label="Jejum" value={totg0} onChange={setTotg0} placeholder="ex: 88" /></View>
-          <View style={{ flex: 1 }}><Field label="1h" value={totg1} onChange={setTotg1} placeholder="ex: 165" /></View>
-          <View style={{ flex: 1 }}><Field label="2h" value={totg2} onChange={setTotg2} placeholder="ex: 138" /></View>
-        </Row>
-        <Field label="Estreptococo B" value={strep} onChange={setStrep} />
-        <TouchableOpacity style={s.saveBtn} onPress={() => setEditEsp(false)}>
-          <Text style={s.saveBtnText}>Salvar</Text>
+        <TouchableOpacity style={[s.saveBtn, saving && { opacity: 0.6 }]} onPress={saveClin} disabled={saving}>
+          <Text style={s.saveBtnText}>{saving ? 'Salvando...' : 'Salvar'}</Text>
         </TouchableOpacity>
       </Sheet>
     </ScrollView>
@@ -323,47 +245,56 @@ function GeralTab() {
 
 // ── SINAIS VITAIS TAB ─────────────────────────────────────────────────────────
 
-function SinaisTab() {
-  const [pressao, setPressao] = useState<PressaoItem[]>(PRESS_MOCK);
-  const [glicose, setGlicose] = useState<GlicoseItem[]>(GLIC_MOCK);
+function SinaisTab({ patientId }: { patientId: string }) {
+  const [pressao, setPressao] = useState<BloodPressureReading[]>([]);
+  const [glicose, setGlicose] = useState<GlucoseReading[]>([]);
   const [pressModal, setPressModal] = useState(false);
   const [glicModal, setGlicModal] = useState(false);
-  const [sis, setSis] = useState(''); const [dia, setDia] = useState('');
+  const [sis, setSis] = useState('');
+  const [dia, setDia] = useState('');
   const [glicVal, setGlicVal] = useState('');
-  const [glicMom, setGlicMom] = useState('Jejum');
+  const [glicMom, setGlicMom] = useState<GlucoseMoment>('fasting');
 
   useEffect(() => {
-    storage.get<PressaoItem[]>(STORAGE_KEYS.pressao).then((v) => { if (v?.length) setPressao(v); });
-    storage.get<GlicoseItem[]>(STORAGE_KEYS.glicose).then((v) => { if (v?.length) setGlicose(v); });
-  }, []);
+    vitalsService.listBloodPressureReadings(patientId, 5).then((r) => setPressao(r.data)).catch(() => {});
+    vitalsService.listGlucoseReadings(patientId, 5).then((r) => setGlicose(r.data)).catch(() => {});
+  }, [patientId]);
 
   const addPA = async () => {
-    const s = parseInt(sis), d = parseInt(dia);
-    if (!s || !d) return;
-    const updated = [{ id: Date.now(), sistolica: s, diastolica: d, momento: 'Agora' }, ...pressao];
-    setPressao(updated); await storage.set(STORAGE_KEYS.pressao, updated);
-    setPressModal(false); setSis(''); setDia('');
+    const sys = parseInt(sis), d = parseInt(dia);
+    if (!sys || !d) return;
+    try {
+      const rec = await vitalsService.createBloodPressure(patientId, { systolic: sys, diastolic: d, moment: 'morning' });
+      setPressao((prev) => [rec, ...prev]);
+      setPressModal(false); setSis(''); setDia('');
+    } catch {}
   };
 
   const addGlic = async () => {
     const v = parseInt(glicVal);
     if (!v) return;
-    const updated = [{ id: Date.now(), valor: v, momento: glicMom }, ...glicose];
-    setGlicose(updated); await storage.set(STORAGE_KEYS.glicose, updated);
-    setGlicModal(false); setGlicVal('');
+    try {
+      const rec = await vitalsService.createGlucose(patientId, { value_mg_dl: v, moment: glicMom });
+      setGlicose((prev) => [rec, ...prev]);
+      setGlicModal(false); setGlicVal('');
+    } catch {}
+  };
+
+  const MOM_LABELS: Record<string, string> = {
+    fasting: 'Jejum', after_meal: 'Pós-refeição', random: 'Aleatório',
+    morning: 'Manhã', afternoon: 'Tarde', evening: 'Noite',
   };
 
   return (
     <ScrollView contentContainerStyle={{ padding: spacing.lg, paddingBottom: 40 }}>
-      {/* Pressão */}
       <Text style={s.svTitle}>🩺 Pressão Arterial</Text>
       {pressao.slice(0, 3).map((m) => {
-        const { label, color } = classifyPA(m.sistolica, m.diastolica);
+        const { label, color } = classifyPA(m.systolic, m.diastolic);
         return (
           <View key={m.id} style={s.dataRow}>
             <View style={{ flex: 1 }}>
-              <Text style={s.dataVal}>{m.sistolica}/{m.diastolica} <Text style={s.dataUnit}>mmHg</Text></Text>
-              <Text style={s.dataSub}>{m.momento}</Text>
+              <Text style={s.dataVal}>{m.systolic}/{m.diastolic} <Text style={s.dataUnit}>mmHg</Text></Text>
+              <Text style={s.dataSub}>{MOM_LABELS[m.moment] ?? m.moment}</Text>
             </View>
             <View style={[s.badge, { backgroundColor: color + '22' }]}>
               <Text style={[s.badgeText, { color }]}>{label}</Text>
@@ -371,19 +302,19 @@ function SinaisTab() {
           </View>
         );
       })}
+      {pressao.length === 0 && <Text style={s.emptyText}>Nenhum registro de pressão.</Text>}
       <TouchableOpacity style={s.addRowBtn} onPress={() => setPressModal(true)}>
         <Text style={s.addRowBtnText}>+ Registrar Pressão</Text>
       </TouchableOpacity>
 
-      {/* Glicose */}
       <Text style={[s.svTitle, { marginTop: 24 }]}>🩸 Glicose</Text>
       {glicose.slice(0, 3).map((m) => {
-        const { label, color } = classifyGlic(m.valor, m.momento);
+        const { label, color } = classifyGlic(m.value_mg_dl, m.moment);
         return (
           <View key={m.id} style={s.dataRow}>
             <View style={{ flex: 1 }}>
-              <Text style={s.dataVal}>{m.valor} <Text style={s.dataUnit}>mg/dL</Text></Text>
-              <Text style={s.dataSub}>{m.momento}</Text>
+              <Text style={s.dataVal}>{m.value_mg_dl} <Text style={s.dataUnit}>mg/dL</Text></Text>
+              <Text style={s.dataSub}>{MOM_LABELS[m.moment] ?? m.moment}</Text>
             </View>
             <View style={[s.badge, { backgroundColor: color + '22' }]}>
               <Text style={[s.badgeText, { color }]}>{label}</Text>
@@ -391,11 +322,11 @@ function SinaisTab() {
           </View>
         );
       })}
+      {glicose.length === 0 && <Text style={s.emptyText}>Nenhum registro de glicose.</Text>}
       <TouchableOpacity style={s.addRowBtn} onPress={() => setGlicModal(true)}>
         <Text style={s.addRowBtnText}>+ Registrar Glicose</Text>
       </TouchableOpacity>
 
-      {/* Modals */}
       <Sheet visible={pressModal} onClose={() => setPressModal(false)} title="Registrar Pressão">
         <Row>
           <View style={{ flex: 1 }}><Field label="Sistólica" value={sis} onChange={setSis} placeholder="120" /></View>
@@ -409,9 +340,11 @@ function SinaisTab() {
         <Text style={s.fieldLabel}>Momento</Text>
         <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginBottom: 16 }}>
           <View style={{ flexDirection: 'row', gap: 8 }}>
-            {['Jejum', 'Pós-café', 'Pós-almoço', 'Pós-jantar'].map((m) => (
+            {(['fasting', 'after_meal', 'random'] as const).map((m) => (
               <TouchableOpacity key={m} style={[s.chip2, glicMom === m && s.chip2Active]} onPress={() => setGlicMom(m)}>
-                <Text style={[s.chip2Text, glicMom === m && s.chip2TextActive]}>{m}</Text>
+                <Text style={[s.chip2Text, glicMom === m && s.chip2TextActive]}>
+                  {MOM_LABELS[m]}
+                </Text>
               </TouchableOpacity>
             ))}
           </View>
@@ -424,93 +357,86 @@ function SinaisTab() {
 
 // ── CONSULTAS TAB ─────────────────────────────────────────────────────────────
 
-function ConsultasTab() {
-  const [consultas, setConsultas] = useState<Consulta[]>(CONSULTAS_MOCK);
-  const [modal, setModal] = useState(false);
-  const [data, setData] = useState(''); const [ig, setIg] = useState('');
-  const [pa, setPa] = useState(''); const [peso, setPeso] = useState('');
-  const [bcf, setBcf] = useState(''); const [obs, setObs] = useState('');
+function ConsultasTab({ patientId }: { patientId: string }) {
+  const [consultas, setConsultas] = useState<Appointment[]>([]);
+  const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    storage.get<Consulta[]>(STORAGE_KEYS.consultasMedico).then((v) => { if (v?.length) setConsultas(v); });
-  }, []);
+    appointmentsService
+      .listPatientAppointments(patientId, { limit: 20 })
+      .then((r) => setConsultas(r.data))
+      .catch(() => {})
+      .finally(() => setLoading(false));
+  }, [patientId]);
 
-  const salvar = async () => {
-    if (!data) return;
-    const nova: Consulta = { id: Date.now(), data, ig, pa, peso, bcf, obs };
-    const updated = [nova, ...consultas];
-    setConsultas(updated); await storage.set(STORAGE_KEYS.consultasMedico, updated);
-    setModal(false); setData(''); setIg(''); setPa(''); setPeso(''); setBcf(''); setObs('');
-  };
+  if (loading) {
+    return <View style={s.center}><ActivityIndicator size="large" color={colors.primary} /></View>;
+  }
 
   return (
     <ScrollView contentContainerStyle={{ padding: spacing.lg, paddingBottom: 40 }}>
-      <View style={s.addRow}>
-        <Text style={s.addRowLabel}>{consultas.length} consulta{consultas.length !== 1 ? 's' : ''}</Text>
-        <TouchableOpacity style={s.addBtn} onPress={() => setModal(true)}>
-          <Text style={s.addBtnText}>+ Nova Consulta</Text>
-        </TouchableOpacity>
-      </View>
-
+      <Text style={[s.addRowLabel, { marginBottom: 12 }]}>{consultas.length} consulta{consultas.length !== 1 ? 's' : ''}</Text>
+      {consultas.length === 0 && <Text style={s.emptyText}>Nenhuma consulta registrada.</Text>}
       {consultas.map((c) => (
         <ExpandCard key={c.id} header={
           <>
-            <Text style={s.expandDate}>{c.data}</Text>
-            <Text style={s.expandMeta}>IG: {c.ig} · PA: {c.pa} · {c.peso}</Text>
+            <Text style={s.expandDate}>{formatDate(c.date)}</Text>
+            <Text style={s.expandMeta}>{c.type} · {c.time?.slice(0, 5) ?? '—'}</Text>
           </>
         }>
           <View style={s.expandGrid}>
-            {[['IG', c.ig], ['PA', c.pa], ['Peso', c.peso], ['BCF', c.bcf]].map(([k, v]) => (
+            {[['Tipo', c.type], ['Status', c.status], ['Local', c.location ?? '—']].map(([k, v]) => (
               <View key={k} style={s.expandField}>
                 <Text style={s.expandKey}>{k}</Text>
-                <Text style={s.expandVal}>{v || '—'}</Text>
+                <Text style={s.expandVal}>{v}</Text>
               </View>
             ))}
           </View>
-          {c.obs ? <Text style={s.expandObs}>{c.obs}</Text> : null}
+          {c.notes ? <Text style={s.expandObs}>{c.notes}</Text> : null}
         </ExpandCard>
       ))}
-
-      <Sheet visible={modal} onClose={() => setModal(false)} title="Nova Consulta">
-        <Row>
-          <View style={{ flex: 1 }}><Field label="Data" value={data} onChange={setData} placeholder="ex: 15 Abr" /></View>
-          <View style={{ flex: 1 }}><Field label="IG" value={ig} onChange={setIg} placeholder="ex: 26ª sem" /></View>
-        </Row>
-        <Row>
-          <View style={{ flex: 1 }}><Field label="PA" value={pa} onChange={setPa} placeholder="ex: 120/78" /></View>
-          <View style={{ flex: 1 }}><Field label="Peso" value={peso} onChange={setPeso} placeholder="ex: 68,0 kg" /></View>
-        </Row>
-        <Row>
-          <View style={{ flex: 1 }}><Field label="BCF" value={bcf} onChange={setBcf} placeholder="ex: 148 bpm" /></View>
-        </Row>
-        <Field label="Observações / Conduta" value={obs} onChange={setObs} multiline />
-        <TouchableOpacity style={s.saveBtn} onPress={salvar}><Text style={s.saveBtnText}>Salvar</Text></TouchableOpacity>
-      </Sheet>
     </ScrollView>
   );
 }
 
 // ── USG TAB ───────────────────────────────────────────────────────────────────
 
-function USGTab() {
-  const [list, setList] = useState<USG[]>(USG_MOCK);
+function USGTab({ patientId }: { patientId: string }) {
+  const [list, setList] = useState<Ultrasound[]>([]);
+  const [loading, setLoading] = useState(true);
   const [modal, setModal] = useState(false);
-  const [tipo, setTipo] = useState(''); const [data, setData] = useState('');
-  const [ig, setIg] = useState(''); const [apres, setApres] = useState('');
-  const [la, setLa] = useState(''); const [bcf, setBcf] = useState('');
-  const [peso, setPeso] = useState('');
+  const [tipo, setTipo] = useState('obstetric');
+  const [data, setData] = useState('');
+  const [ig, setIg] = useState('');
+  const [apres, setApres] = useState('');
+  const [la, setLa] = useState('');
+  const [bcf, setBcf] = useState('');
 
   useEffect(() => {
-    storage.get<USG[]>(STORAGE_KEYS.usgMedico).then((v) => { if (v?.length) setList(v); });
-  }, []);
+    examsService.listUltrasounds(patientId, { limit: 20 })
+      .then((r) => setList(r.data))
+      .catch(() => {})
+      .finally(() => setLoading(false));
+  }, [patientId]);
 
   const salvar = async () => {
-    if (!data) return;
-    const novo: USG = { id: Date.now(), tipo, data, ig, apresentacao: apres, la, bcf, peso };
-    const updated = [novo, ...list];
-    setList(updated); await storage.set(STORAGE_KEYS.usgMedico, updated);
-    setModal(false); setTipo(''); setData(''); setIg(''); setApres(''); setLa(''); setBcf(''); setPeso('');
+    if (!data || !ig) return;
+    try {
+      const novo = await examsService.createUltrasound(patientId, {
+        type: tipo as 'obstetric' | 'morphology' | 'detailed',
+        date: data,
+        ig_weeks: parseInt(ig) || 0,
+        presentation: apres as any || undefined,
+        fetal_heart_rate: bcf ? parseInt(bcf) : undefined,
+      });
+      setList((prev) => [novo, ...prev]);
+      setModal(false); setTipo('obstetric'); setData(''); setIg(''); setApres(''); setLa(''); setBcf('');
+    } catch {}
   };
+
+  if (loading) {
+    return <View style={s.center}><ActivityIndicator size="large" color={colors.primary} /></View>;
+  }
 
   return (
     <ScrollView contentContainerStyle={{ padding: spacing.lg, paddingBottom: 40 }}>
@@ -520,38 +446,38 @@ function USGTab() {
           <Text style={s.addBtnText}>+ Novo USG</Text>
         </TouchableOpacity>
       </View>
-
+      {list.length === 0 && <Text style={s.emptyText}>Nenhum exame de USG registrado.</Text>}
       {list.map((u) => (
         <ExpandCard key={u.id} header={
           <>
-            <Text style={s.expandDate}>{u.data}</Text>
-            <Text style={s.expandMeta}>{u.tipo} · IG: {u.ig}</Text>
+            <Text style={s.expandDate}>{formatDate(u.date)}</Text>
+            <Text style={s.expandMeta}>{u.type} · IG {u.ig_weeks}sem</Text>
           </>
         }>
           <View style={s.expandGrid}>
-            {[['Apresentação', u.apresentacao], ['LA', u.la], ['BCF', u.bcf], ['Peso fetal', u.peso]].map(([k, v]) => (
+            {[
+              ['Apresentação', u.presentation ?? '—'],
+              ['BCF', u.fetal_heart_rate ? `${u.fetal_heart_rate} bpm` : '—'],
+              ['LA (ml)', u.amniotic_fluid_ml ? String(u.amniotic_fluid_ml) : '—'],
+              ['Placenta', u.placenta_location ?? '—'],
+            ].map(([k, v]) => (
               <View key={k} style={s.expandField}>
                 <Text style={s.expandKey}>{k}</Text>
-                <Text style={s.expandVal}>{v || '—'}</Text>
+                <Text style={s.expandVal}>{v}</Text>
               </View>
             ))}
           </View>
+          {u.notes ? <Text style={s.expandObs}>{u.notes}</Text> : null}
         </ExpandCard>
       ))}
-
       <Sheet visible={modal} onClose={() => setModal(false)} title="Novo USG">
-        <Field label="Tipo" value={tipo} onChange={setTipo} placeholder="ex: Morfológico 2º trimestre" />
         <Row>
-          <View style={{ flex: 1 }}><Field label="Data" value={data} onChange={setData} placeholder="ex: 15 Abr" /></View>
-          <View style={{ flex: 1 }}><Field label="IG" value={ig} onChange={setIg} placeholder="ex: 26ª sem" /></View>
+          <View style={{ flex: 1 }}><Field label="Data (AAAA-MM-DD)" value={data} onChange={setData} placeholder="ex: 2025-04-15" /></View>
+          <View style={{ flex: 1 }}><Field label="IG (semanas)" value={ig} onChange={setIg} placeholder="ex: 26" /></View>
         </Row>
         <Row>
-          <View style={{ flex: 1 }}><Field label="Apresentação" value={apres} onChange={setApres} placeholder="ex: Cefálica" /></View>
-          <View style={{ flex: 1 }}><Field label="LA" value={la} onChange={setLa} placeholder="ex: ILA 12" /></View>
-        </Row>
-        <Row>
-          <View style={{ flex: 1 }}><Field label="BCF" value={bcf} onChange={setBcf} placeholder="ex: 150 bpm" /></View>
-          <View style={{ flex: 1 }}><Field label="Peso fetal" value={peso} onChange={setPeso} placeholder="ex: 850g" /></View>
+          <View style={{ flex: 1 }}><Field label="Apresentação" value={apres} onChange={setApres} placeholder="ex: cephalic" /></View>
+          <View style={{ flex: 1 }}><Field label="BCF (bpm)" value={bcf} onChange={setBcf} placeholder="ex: 150" /></View>
         </Row>
         <TouchableOpacity style={s.saveBtn} onPress={salvar}><Text style={s.saveBtnText}>Salvar</Text></TouchableOpacity>
       </Sheet>
@@ -561,61 +487,81 @@ function USGTab() {
 
 // ── EXAMES TAB ────────────────────────────────────────────────────────────────
 
-function ExamesTab() {
-  const [list, setList] = useState<Exame[]>(EXAMES_MOCK);
+function ExamesTab({ patientId }: { patientId: string }) {
+  const [list, setList] = useState<LabTest[]>([]);
+  const [loading, setLoading] = useState(true);
   const [modal, setModal] = useState(false);
-  const [data, setData] = useState(''); const [hb, setHb] = useState('');
-  const [glic, setGlic] = useState(''); const [tsh, setTsh] = useState('');
-  const [obs, setObs] = useState('');
+  const [nome, setNome] = useState('');
+  const [tipo, setTipo] = useState('');
+  const [data, setData] = useState('');
+  const [resultado, setResultado] = useState('');
 
   useEffect(() => {
-    storage.get<Exame[]>(STORAGE_KEYS.examesMedico).then((v) => { if (v?.length) setList(v); });
-  }, []);
+    examsService.listLabTests(patientId, { limit: 20 })
+      .then((r) => setList(r.data))
+      .catch(() => {})
+      .finally(() => setLoading(false));
+  }, [patientId]);
 
   const salvar = async () => {
-    if (!data) return;
-    const novo: Exame = { id: Date.now(), data, hb, glicemia: glic, tsh, obs };
-    const updated = [novo, ...list];
-    setList(updated); await storage.set(STORAGE_KEYS.examesMedico, updated);
-    setModal(false); setData(''); setHb(''); setGlic(''); setTsh(''); setObs('');
+    if (!nome || !data) return;
+    try {
+      const novo = await examsService.createLabTest(patientId, {
+        name: nome, type: tipo || 'general', date: data,
+        result: resultado || undefined, status: 'pending',
+      });
+      setList((prev) => [novo, ...prev]);
+      setModal(false); setNome(''); setTipo(''); setData(''); setResultado('');
+    } catch {}
+  };
+
+  if (loading) {
+    return <View style={s.center}><ActivityIndicator size="large" color={colors.primary} /></View>;
+  }
+
+  const STATUS_COLORS: Record<string, string> = {
+    completed: '#3CB371', pending: colors.textInactive, abnormal: colors.accent,
   };
 
   return (
     <ScrollView contentContainerStyle={{ padding: spacing.lg, paddingBottom: 40 }}>
       <View style={s.addRow}>
-        <Text style={s.addRowLabel}>{list.length} coleta{list.length !== 1 ? 's' : ''}</Text>
+        <Text style={s.addRowLabel}>{list.length} exame{list.length !== 1 ? 's' : ''}</Text>
         <TouchableOpacity style={s.addBtn} onPress={() => setModal(true)}>
           <Text style={s.addBtnText}>+ Nova Coleta</Text>
         </TouchableOpacity>
       </View>
-
+      {list.length === 0 && <Text style={s.emptyText}>Nenhum exame laboratorial registrado.</Text>}
       {list.map((e) => (
         <ExpandCard key={e.id} header={
           <>
-            <Text style={s.expandDate}>{e.data}</Text>
-            <Text style={s.expandMeta}>Hb: {e.hb} · Glicemia: {e.glicemia}</Text>
+            <Text style={s.expandDate}>{formatDate(e.date)}</Text>
+            <Text style={s.expandMeta}>{e.name}</Text>
           </>
         }>
           <View style={s.expandGrid}>
-            {[['Hemoglobina', e.hb], ['Glicemia jejum', e.glicemia], ['TSH', e.tsh]].map(([k, v]) => (
+            {[
+              ['Tipo', e.type],
+              ['Resultado', e.result ?? '—'],
+              ['Referência', e.reference_range ?? '—'],
+              ['Status', e.status],
+            ].map(([k, v]) => (
               <View key={k} style={s.expandField}>
                 <Text style={s.expandKey}>{k}</Text>
-                <Text style={s.expandVal}>{v || '—'}</Text>
+                <Text style={[s.expandVal, k === 'Status' && { color: STATUS_COLORS[v] ?? colors.text }]}>{v}</Text>
               </View>
             ))}
           </View>
-          {e.obs ? <Text style={s.expandObs}>{e.obs}</Text> : null}
+          {e.notes ? <Text style={s.expandObs}>{e.notes}</Text> : null}
         </ExpandCard>
       ))}
-
       <Sheet visible={modal} onClose={() => setModal(false)} title="Nova Coleta">
-        <Field label="Data" value={data} onChange={setData} placeholder="ex: 15 Abr 2025" />
+        <Field label="Nome do exame" value={nome} onChange={setNome} placeholder="ex: Hemograma" />
         <Row>
-          <View style={{ flex: 1 }}><Field label="Hemoglobina" value={hb} onChange={setHb} placeholder="ex: 11,2 g/dL" /></View>
-          <View style={{ flex: 1 }}><Field label="Glicemia jejum" value={glic} onChange={setGlic} placeholder="ex: 88 mg/dL" /></View>
+          <View style={{ flex: 1 }}><Field label="Tipo" value={tipo} onChange={setTipo} placeholder="ex: blood" /></View>
+          <View style={{ flex: 1 }}><Field label="Data (AAAA-MM-DD)" value={data} onChange={setData} placeholder="ex: 2025-04-15" /></View>
         </Row>
-        <Field label="TSH" value={tsh} onChange={setTsh} placeholder="ex: 2,1 uUI/mL" />
-        <Field label="Observações" value={obs} onChange={setObs} multiline />
+        <Field label="Resultado" value={resultado} onChange={setResultado} multiline />
         <TouchableOpacity style={s.saveBtn} onPress={salvar}><Text style={s.saveBtnText}>Salvar</Text></TouchableOpacity>
       </Sheet>
     </ScrollView>
@@ -624,23 +570,44 @@ function ExamesTab() {
 
 // ── VACINAS TAB ───────────────────────────────────────────────────────────────
 
-function VacinasTab() {
-  const [list, setList] = useState<Vacina[]>(VACINAS_MOCK);
+function VacinasTab({ patientId }: { patientId: string }) {
+  const [list, setList] = useState<Vaccine[]>([]);
+  const [loading, setLoading] = useState(true);
   const [modal, setModal] = useState(false);
-  const [nome, setNome] = useState(''); const [data, setData] = useState('');
-  const [dose, setDose] = useState(''); const [status, setStatus] = useState<Vacina['status']>('aplicada');
+  const [nome, setNome] = useState('');
+  const [data, setData] = useState('');
+  const [dose, setDose] = useState('1');
+  const [statusVal, setStatusVal] = useState<VaccineStatus>('scheduled');
 
   useEffect(() => {
-    storage.get<Vacina[]>(STORAGE_KEYS.vacinasMedico).then((v) => { if (v?.length) setList(v); });
-  }, []);
+    examsService.listVaccines(patientId, { limit: 20 })
+      .then((r) => setList(r.data))
+      .catch(() => {})
+      .finally(() => setLoading(false));
+  }, [patientId]);
 
   const salvar = async () => {
-    if (!nome) return;
-    const nova: Vacina = { id: Date.now(), nome, data, dose, status };
-    const updated = [...list, nova];
-    setList(updated); await storage.set(STORAGE_KEYS.vacinasMedico, updated);
-    setModal(false); setNome(''); setData(''); setDose('');
+    if (!nome || !data) return;
+    try {
+      const nova = await examsService.createVaccine(patientId, {
+        vaccine_type: nome, date: data,
+        dose_number: parseInt(dose) || 1, status: statusVal,
+      });
+      setList((prev) => [...prev, nova]);
+      setModal(false); setNome(''); setData(''); setDose('1'); setStatusVal('scheduled');
+    } catch {}
   };
+
+  const updateStatus = async (v: Vaccine, status: VaccineStatus) => {
+    try {
+      const updated = await examsService.updateVaccine(patientId, v.id, { status });
+      setList((prev) => prev.map((x) => x.id === v.id ? updated : x));
+    } catch {}
+  };
+
+  if (loading) {
+    return <View style={s.center}><ActivityIndicator size="large" color={colors.primary} /></View>;
+  }
 
   return (
     <ScrollView contentContainerStyle={{ padding: spacing.lg, paddingBottom: 40 }}>
@@ -650,36 +617,42 @@ function VacinasTab() {
           <Text style={s.addBtnText}>+ Registrar Vacina</Text>
         </TouchableOpacity>
       </View>
-
+      {list.length === 0 && <Text style={s.emptyText}>Nenhuma vacina registrada.</Text>}
       <View style={s.vacinasCard}>
         {list.map((v, i) => {
-          const { bg, color, label } = vacinaColor(v.status);
+          const { bg, color, label } = VACCINE_STATUS_LABELS[v.status] ?? VACCINE_STATUS_LABELS.missed;
           return (
             <View key={v.id} style={[s.vacinaRow, i < list.length - 1 && s.vacinaRowBorder]}>
               <View style={{ flex: 1 }}>
-                <Text style={s.vacinaNome}>{v.nome}</Text>
-                <Text style={s.vacinaInfo}>{v.dose}{v.data !== '—' ? ` · ${v.data}` : ''}</Text>
+                <Text style={s.vacinaNome}>{v.vaccine_type}</Text>
+                <Text style={s.vacinaInfo}>Dose {v.dose_number} · {formatDate(v.date)}</Text>
               </View>
-              <View style={[s.badge, { backgroundColor: bg }]}>
+              <TouchableOpacity
+                style={[s.badge, { backgroundColor: bg }]}
+                onPress={() => {
+                  const next: VaccineStatus = v.status === 'scheduled' ? 'completed'
+                    : v.status === 'completed' ? 'missed' : 'scheduled';
+                  updateStatus(v, next);
+                }}
+              >
                 <Text style={[s.badgeText, { color }]}>{label}</Text>
-              </View>
+              </TouchableOpacity>
             </View>
           );
         })}
       </View>
-
       <Sheet visible={modal} onClose={() => setModal(false)} title="Registrar Vacina">
         <Field label="Vacina" value={nome} onChange={setNome} placeholder="ex: dTpa" />
         <Row>
-          <View style={{ flex: 1 }}><Field label="Data" value={data} onChange={setData} placeholder="ex: 10 Abr" /></View>
-          <View style={{ flex: 1 }}><Field label="Dose" value={dose} onChange={setDose} placeholder="ex: 1ª dose" /></View>
+          <View style={{ flex: 1 }}><Field label="Data (AAAA-MM-DD)" value={data} onChange={setData} placeholder="ex: 2025-04-10" /></View>
+          <View style={{ flex: 1 }}><Field label="Dose nº" value={dose} onChange={setDose} placeholder="1" /></View>
         </Row>
         <Text style={s.fieldLabel}>Status</Text>
         <View style={{ flexDirection: 'row', gap: 8, marginBottom: 16 }}>
-          {(['aplicada', 'agendada', 'nao'] as const).map((opt) => (
-            <TouchableOpacity key={opt} style={[s.chip2, status === opt && s.chip2Active]} onPress={() => setStatus(opt)}>
-              <Text style={[s.chip2Text, status === opt && s.chip2TextActive]}>
-                {opt === 'aplicada' ? 'Aplicada' : opt === 'agendada' ? 'Agendada' : 'Não aplicada'}
+          {(['scheduled', 'completed', 'missed'] as VaccineStatus[]).map((opt) => (
+            <TouchableOpacity key={opt} style={[s.chip2, statusVal === opt && s.chip2Active]} onPress={() => setStatusVal(opt)}>
+              <Text style={[s.chip2Text, statusVal === opt && s.chip2TextActive]}>
+                {VACCINE_STATUS_LABELS[opt].label}
               </Text>
             </TouchableOpacity>
           ))}
@@ -693,23 +666,32 @@ function VacinasTab() {
 // ── MAIN SCREEN ───────────────────────────────────────────────────────────────
 
 export function PacienteDetalheScreen() {
+  const route = useRoute<RouteType>();
+  const { patientId } = route.params;
   const [tab, setTab] = useState<Tab>('geral');
+  const [patientName, setPatientName] = useState('Paciente');
   const insets = useSafeAreaInsets();
+
+  useEffect(() => {
+    patientsService.getPatient(patientId)
+      .then((p) => setPatientName(p.name))
+      .catch(() => {});
+  }, [patientId]);
 
   const renderTab = () => {
     switch (tab) {
-      case 'geral': return <GeralTab />;
-      case 'sinais': return <SinaisTab />;
-      case 'consultas': return <ConsultasTab />;
-      case 'usg': return <USGTab />;
-      case 'exames': return <ExamesTab />;
-      case 'vacinas': return <VacinasTab />;
+      case 'geral': return <GeralTab patientId={patientId} />;
+      case 'sinais': return <SinaisTab patientId={patientId} />;
+      case 'consultas': return <ConsultasTab patientId={patientId} />;
+      case 'usg': return <USGTab patientId={patientId} />;
+      case 'exames': return <ExamesTab patientId={patientId} />;
+      case 'vacinas': return <VacinasTab patientId={patientId} />;
     }
   };
 
   return (
     <View style={[s.container, { paddingBottom: insets.bottom }]}>
-      <ScreenHeader title="Maria da Silva" />
+      <ScreenHeader title={patientName} />
       <ScrollView
         horizontal
         showsHorizontalScrollIndicator={false}
@@ -735,15 +717,15 @@ export function PacienteDetalheScreen() {
 
 const s = StyleSheet.create({
   container: { flex: 1, backgroundColor: colors.bg },
+  center: { flex: 1, justifyContent: 'center', alignItems: 'center' },
+  emptyText: { fontSize: 13, color: colors.textMid, textAlign: 'center', marginBottom: 16 },
 
-  // Tabs
   tabBar: { maxHeight: 52, backgroundColor: colors.white, borderBottomWidth: 1, borderBottomColor: 'rgba(0,0,0,0.07)' },
   tabBtn: { paddingHorizontal: 16, paddingVertical: 10, borderRadius: radius.full },
   tabBtnActive: { backgroundColor: colors.primary },
   tabText: { fontSize: 13, fontWeight: '600', color: colors.textInactive },
   tabTextActive: { color: colors.white },
 
-  // Dark patient card
   darkCard: { backgroundColor: colors.darkCard, borderRadius: radius.lg, padding: 18, marginBottom: 12 },
   darkAvatar: { width: 52, height: 52, borderRadius: 26, backgroundColor: 'rgba(255,255,255,0.15)', justifyContent: 'center', alignItems: 'center' },
   darkAvatarText: { fontSize: 17, fontWeight: '800', color: colors.white },
@@ -755,7 +737,6 @@ const s = StyleSheet.create({
   chipText: { fontSize: 11, fontWeight: '700', color: 'rgba(255,255,255,0.85)' },
   chipTextAccent: { color: '#f4b9a5' },
 
-  // Info card (read view)
   infoCard: { backgroundColor: colors.white, borderRadius: radius.md, padding: 16, shadowColor: '#000', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.04, shadowRadius: 8, elevation: 2 },
   infoCardHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12, paddingBottom: 10, borderBottomWidth: 1.5, borderBottomColor: colors.bg },
   infoCardTitle: { fontSize: 11, fontWeight: '800', color: colors.primaryDk, textTransform: 'uppercase', letterSpacing: 1 },
@@ -765,36 +746,25 @@ const s = StyleSheet.create({
   infoKey: { fontSize: 12, color: colors.textInactive, fontWeight: '600', flexShrink: 0 },
   infoVal: { fontSize: 13, fontWeight: '700', color: colors.text, textAlign: 'right', flex: 1 },
 
-  // Notes
   notasCard: { backgroundColor: '#FFFDF0', borderRadius: radius.md, padding: 16, borderLeftWidth: 3, borderLeftColor: colors.accent },
   notasTitle: { fontSize: 12, fontWeight: '600', color: colors.textMid, marginBottom: 10 },
   notasInput: { fontSize: 14, color: colors.text, minHeight: 100 },
 
-  // Sections (for unused SectionCard)
-  sectionWrap: { marginBottom: 20 },
-  sectionTitle: { fontSize: 15, fontWeight: '800', color: colors.text, marginBottom: 10 },
-  sectionCard: { backgroundColor: colors.white, borderRadius: radius.md, padding: 16, gap: 12, shadowColor: '#000', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.04, shadowRadius: 8, elevation: 2 },
-
-  // Sheet / modal
   sheet: { backgroundColor: colors.white, borderTopLeftRadius: radius.lg, borderTopRightRadius: radius.lg, padding: spacing.lg, maxHeight: '85%' },
   handle: { width: 40, height: 4, borderRadius: 2, backgroundColor: colors.textInactive, alignSelf: 'center', marginBottom: 20 },
   sheetTitle: { fontSize: 17, fontWeight: '800', color: colors.text, marginBottom: 16 },
 
-  // Field
   fieldLabel: { fontSize: 11, fontWeight: '600', color: colors.textInactive, textTransform: 'uppercase', letterSpacing: 0.5, marginBottom: 4 },
   fieldInput: { backgroundColor: colors.bg, borderRadius: radius.sm, padding: 12, fontSize: 14, color: colors.text, marginBottom: 12 },
 
-  // Buttons
   saveBtn: { backgroundColor: colors.primary, borderRadius: radius.full, padding: 16, alignItems: 'center', marginTop: 8 },
   saveBtnText: { fontSize: 15, fontWeight: '700', color: colors.white },
 
-  // Add row
   addRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 },
   addRowLabel: { fontSize: 13, fontWeight: '700', color: colors.textMid },
   addBtn: { backgroundColor: colors.accent, borderRadius: 10, paddingHorizontal: 14, paddingVertical: 8 },
   addBtnText: { fontSize: 13, fontWeight: '700', color: colors.white },
 
-  // Expandable card
   expandCard: { backgroundColor: colors.white, borderRadius: radius.md, marginBottom: 10, overflow: 'hidden', shadowColor: '#000', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.04, shadowRadius: 8, elevation: 2 },
   expandHeader: { flexDirection: 'row', alignItems: 'center', padding: 14, gap: 10 },
   expandBody: { padding: 14, borderTopWidth: 1, borderTopColor: colors.bg },
@@ -806,7 +776,6 @@ const s = StyleSheet.create({
   expandVal: { fontSize: 13, fontWeight: '700', color: colors.text },
   expandObs: { fontSize: 13, color: colors.textMid, lineHeight: 18, paddingTop: 8, borderTopWidth: 1, borderTopColor: colors.bg },
 
-  // Sinais vitais
   svTitle: { fontSize: 16, fontWeight: '700', color: colors.text, marginBottom: 12 },
   dataRow: { backgroundColor: colors.white, borderRadius: radius.md, padding: 14, flexDirection: 'row', alignItems: 'center', marginBottom: 8, shadowColor: '#000', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.04, shadowRadius: 8, elevation: 2 },
   dataVal: { fontSize: 16, fontWeight: '800', color: colors.text },
@@ -815,17 +784,14 @@ const s = StyleSheet.create({
   addRowBtn: { borderWidth: 1.5, borderColor: colors.accent, borderStyle: 'dashed', borderRadius: radius.md, padding: 12, alignItems: 'center', marginTop: 4 },
   addRowBtnText: { fontSize: 13, fontWeight: '700', color: colors.accent },
 
-  // Badge
   badge: { paddingHorizontal: 10, paddingVertical: 4, borderRadius: radius.full },
   badgeText: { fontSize: 11, fontWeight: '700' },
 
-  // Chips (modal)
   chip2: { paddingHorizontal: 14, paddingVertical: 8, borderRadius: radius.full, backgroundColor: colors.bg },
   chip2Active: { backgroundColor: colors.primary },
   chip2Text: { fontSize: 13, fontWeight: '600', color: colors.textMid },
   chip2TextActive: { color: colors.white },
 
-  // Vacinas
   vacinasCard: { backgroundColor: colors.white, borderRadius: radius.md, overflow: 'hidden', shadowColor: '#000', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.04, shadowRadius: 8, elevation: 2 },
   vacinaRow: { flexDirection: 'row', alignItems: 'center', padding: 14, gap: 10 },
   vacinaRowBorder: { borderBottomWidth: 1, borderBottomColor: colors.bg },

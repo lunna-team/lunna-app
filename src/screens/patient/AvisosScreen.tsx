@@ -1,54 +1,119 @@
-import React, { useState } from 'react';
-import { View, Text, StyleSheet, ScrollView, TouchableOpacity } from 'react-native';
+import React, { useState, useEffect } from 'react';
+import { View, Text, StyleSheet, ScrollView, TouchableOpacity, ActivityIndicator } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { ScreenHeader } from '../../components/common/ScreenHeader';
+import { announcementsService } from '../../services/announcements';
+import { useAuth } from '../../contexts/AuthContext';
 import { colors, spacing, radius } from '../../theme';
+import type { Announcement } from '../../types';
 
 const CATEGORIAS = ['Todos', 'Agenda', 'Saúde', 'Clínica', 'Geral'];
-const AVISOS = [
-  { id: 1, cat: 'Agenda', icon: '📅', titulo: 'Recesso de Carnaval', curto: 'Clínica fechada de 1 a 5 de Março.', completo: 'A Clínica Gerar Vida estará fechada durante o Recesso de Carnaval, de 1 a 5 de Março. Retornamos normalmente no dia 6 de Março. Em caso de urgência, entre em contato pelo Chat.', data: 'Ontem', novo: true },
-  { id: 2, cat: 'Saúde', icon: '💉', titulo: 'Campanha de Vacinação', curto: 'Vacina da gripe disponível até 28 de Fevereiro.', completo: 'A vacina da gripe está disponível gratuitamente para gestantes até o dia 28 de Fevereiro. Agende no chat ou presencialmente.', data: '2 dias atrás', novo: true },
-  { id: 3, cat: 'Clínica', icon: '🏥', titulo: 'Novo Horário de Atendimento', curto: 'A partir de Março, atendimento até às 19h.', completo: 'A partir de 1 de Março, nosso horário de atendimento será estendido até às 19h de segunda a sexta.', data: '1 semana atrás', novo: false },
-  { id: 4, cat: 'Geral', icon: '📢', titulo: 'Pesquisa de Satisfação', curto: 'Compartilhe sua experiência conosco.', completo: 'Queremos saber como foi sua experiência na clínica. Responda nossa pesquisa de satisfação pelo link enviado por e-mail.', data: '2 semanas atrás', novo: false },
-  { id: 5, cat: 'Agenda', icon: '📋', titulo: 'Lembrete de Exames', curto: 'Exames do 2º trimestre disponíveis.', completo: 'Os exames do segundo trimestre já estão disponíveis para agendamento. Solicite à sua médica na próxima consulta ou pelo chat.', data: '1 mês atrás', novo: false },
-];
+
+const CATEGORY_ICONS: Record<string, string> = {
+  Agenda: '📅', Saúde: '💉', Clínica: '🏥', Geral: '📢',
+};
+
+function formatRelativeDate(iso: string): string {
+  const diff = Math.floor((Date.now() - new Date(iso).getTime()) / 86400000);
+  if (diff === 0) return 'Hoje';
+  if (diff === 1) return 'Ontem';
+  if (diff < 7) return `${diff} dias atrás`;
+  return new Date(iso).toLocaleDateString('pt-BR', { day: '2-digit', month: 'short' });
+}
 
 export function AvisosScreen() {
+  const { user } = useAuth();
   const [catAtiva, setCatAtiva] = useState('Todos');
-  const [expandido, setExpandido] = useState<number | null>(null);
+  const [expandido, setExpandido] = useState<string | null>(null);
+  const [avisos, setAvisos] = useState<Announcement[]>([]);
+  const [loading, setLoading] = useState(true);
   const insets = useSafeAreaInsets();
 
-  const filtrados = catAtiva === 'Todos' ? AVISOS : AVISOS.filter((a) => a.cat === catAtiva);
+  useEffect(() => {
+    if (!user?.clinic_id) return;
+    announcementsService
+      .list(user.clinic_id, { limit: 50 })
+      .then((res) => setAvisos(res.data))
+      .catch(() => {})
+      .finally(() => setLoading(false));
+  }, [user?.clinic_id]);
+
+  const filtrados = catAtiva === 'Todos'
+    ? avisos
+    : avisos.filter((a) => a.category === catAtiva);
+
+  const handleExpand = (aviso: Announcement) => {
+    const next = expandido === aviso.id ? null : aviso.id;
+    setExpandido(next);
+    if (next && aviso.is_new && user?.clinic_id) {
+      announcementsService.markRead(user.clinic_id, aviso.id).catch(() => {});
+      setAvisos((prev) =>
+        prev.map((a) => (a.id === aviso.id ? { ...a, is_new: false } : a)),
+      );
+    }
+  };
 
   return (
     <View style={[styles.container, { paddingBottom: insets.bottom }]}>
       <ScreenHeader title="Avisos da Clínica" />
-      <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.filtros} contentContainerStyle={{ paddingHorizontal: spacing.lg, gap: 8 }}>
+      <ScrollView
+        horizontal
+        showsHorizontalScrollIndicator={false}
+        style={styles.filtros}
+        contentContainerStyle={{ paddingHorizontal: spacing.lg, gap: 8 }}
+      >
         {CATEGORIAS.map((c) => (
-          <TouchableOpacity key={c} style={[styles.chip, catAtiva === c && styles.chipActive]} onPress={() => setCatAtiva(c)}>
+          <TouchableOpacity
+            key={c}
+            style={[styles.chip, catAtiva === c && styles.chipActive]}
+            onPress={() => setCatAtiva(c)}
+          >
             <Text style={[styles.chipText, catAtiva === c && styles.chipTextActive]}>{c}</Text>
           </TouchableOpacity>
         ))}
       </ScrollView>
-      <ScrollView contentContainerStyle={{ padding: spacing.lg, paddingBottom: 40 }}>
-        {filtrados.map((a) => (
-          <TouchableOpacity key={a.id} style={styles.card} onPress={() => setExpandido(expandido === a.id ? null : a.id)} activeOpacity={0.85}>
-            <View style={styles.cardHeader}>
-              <Text style={{ fontSize: 22 }}>{a.icon}</Text>
-              <View style={{ flex: 1 }}>
-                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
-                  <Text style={styles.titulo}>{a.titulo}</Text>
-                  {a.novo && <View style={styles.novoBadge}><Text style={styles.novoBadgeText}>Novo</Text></View>}
+
+      {loading ? (
+        <View style={styles.center}>
+          <ActivityIndicator size="large" color={colors.primary} />
+        </View>
+      ) : (
+        <ScrollView contentContainerStyle={{ padding: spacing.lg, paddingBottom: 40 }}>
+          {filtrados.length === 0 && (
+            <Text style={styles.empty}>Nenhum aviso encontrado.</Text>
+          )}
+          {filtrados.map((a) => (
+            <TouchableOpacity
+              key={a.id}
+              style={styles.card}
+              onPress={() => handleExpand(a)}
+              activeOpacity={0.85}
+            >
+              <View style={styles.cardHeader}>
+                <Text style={{ fontSize: 22 }}>{CATEGORY_ICONS[a.category] ?? '📢'}</Text>
+                <View style={{ flex: 1 }}>
+                  <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+                    <Text style={styles.titulo}>{a.title}</Text>
+                    {a.is_new && (
+                      <View style={styles.novoBadge}>
+                        <Text style={styles.novoBadgeText}>Novo</Text>
+                      </View>
+                    )}
+                  </View>
+                  <Text style={styles.curto}>{a.short_description}</Text>
+                  <Text style={styles.data}>{formatRelativeDate(a.created_at)}</Text>
                 </View>
-                <Text style={styles.curto}>{a.curto}</Text>
-                <Text style={styles.data}>{a.data}</Text>
+                <Text style={{ fontSize: 18, color: colors.textInactive }}>
+                  {expandido === a.id ? '∧' : '∨'}
+                </Text>
               </View>
-              <Text style={{ fontSize: 18, color: colors.textInactive }}>{expandido === a.id ? '∧' : '∨'}</Text>
-            </View>
-            {expandido === a.id && <Text style={styles.completo}>{a.completo}</Text>}
-          </TouchableOpacity>
-        ))}
-      </ScrollView>
+              {expandido === a.id && (
+                <Text style={styles.completo}>{a.full_description}</Text>
+              )}
+            </TouchableOpacity>
+          ))}
+        </ScrollView>
+      )}
     </View>
   );
 }
@@ -56,6 +121,7 @@ export function AvisosScreen() {
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: colors.bg },
   filtros: { maxHeight: 52, paddingVertical: 8 },
+  center: { flex: 1, justifyContent: 'center', alignItems: 'center' },
   chip: { paddingHorizontal: 16, paddingVertical: 8, borderRadius: radius.full, backgroundColor: colors.white },
   chipActive: { backgroundColor: colors.primary },
   chipText: { fontSize: 13, fontWeight: '600', color: colors.textMid },
@@ -68,4 +134,5 @@ const styles = StyleSheet.create({
   novoBadge: { backgroundColor: colors.accent, paddingHorizontal: 6, paddingVertical: 2, borderRadius: radius.full },
   novoBadgeText: { fontSize: 9, fontWeight: '700', color: colors.white },
   completo: { fontSize: 13, color: colors.text, lineHeight: 20, marginTop: 12, paddingTop: 12, borderTopWidth: 1, borderTopColor: colors.bg },
+  empty: { textAlign: 'center', color: colors.textMid, marginTop: 40, fontSize: 14 },
 });
