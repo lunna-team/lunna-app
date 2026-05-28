@@ -10,4 +10,10 @@ export const usersService = {
 
   getClinic: (userId: string) =>
     api.get<Clinic>(`/users/${userId}/clinic`),
+
+  updatePushToken: (userId: string, pushToken: string) =>
+    api.patch<void>(`/users/${userId}/push-token`, { push_token: pushToken }),
+
+  updateOnboarding: (userId: string, completed: boolean) =>
+    api.patch<void>(`/users/${userId}/onboarding`, { completed }),
 };

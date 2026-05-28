@@ -65,8 +65,8 @@ export const examsService = {
   createVaccine: (patientId: string, data: VaccineCreate) =>
     api.post<Vaccine>(`/patients/${patientId}/vaccines`, data),
 
-  updateVaccine: (patientId: string, vaccineId: string, data: { status?: VaccineStatus; reactions?: string }) =>
-    api.patch<Vaccine>(`/patients/${patientId}/vaccines/${vaccineId}`, data),
+  updateVaccine: (_patientId: string, vaccineId: string, data: { status?: VaccineStatus; reactions?: string }) =>
+    api.patch<Vaccine>(`/patients/vaccines/${vaccineId}`, data),
 
   // Exames laboratoriais
   listLabTests: (patientId: string, params?: { type?: string; limit?: number; offset?: number }) => {

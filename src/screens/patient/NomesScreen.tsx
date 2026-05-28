@@ -31,8 +31,8 @@ export function NomesScreen() {
       .finally(() => setLoading(false));
   }, []);
 
-  const meninas = nomes.filter((n) => n.gender === 'F');
-  const meninos = nomes.filter((n) => n.gender === 'M');
+  const meninas = nomes.filter((n) => n.gender === 'female');
+  const meninos = nomes.filter((n) => n.gender === 'male');
 
   const handleToggleFavorite = async (name: BabyName) => {
     if (!user?.id || favoriting) return;

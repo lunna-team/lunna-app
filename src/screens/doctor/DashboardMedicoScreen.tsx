@@ -9,7 +9,7 @@ import { RiskBadge } from '../../components/domain/RiskBadge';
 import { patientsService } from '../../services/patients';
 import { useAuth } from '../../contexts/AuthContext';
 import { colors, spacing, radius } from '../../theme';
-import type { DoctorDashboard, AgendaItem, PatientDetail, RiskLevel } from '../../types';
+import type { DoctorDashboard, AgendaResponse, AgendaAppointment, PatientDetail, RiskLevel } from '../../types';
 
 type Nav = NativeStackNavigationProp<DoctorStackParams>;
 
@@ -103,7 +103,7 @@ export function DashboardMedicoScreen() {
   const navigation = useNavigation<Nav>();
   const insets = useSafeAreaInsets();
   const [dashboard, setDashboard] = useState<DoctorDashboard | null>(null);
-  const [agenda, setAgenda] = useState<AgendaItem[]>([]);
+  const [agenda, setAgenda] = useState<AgendaAppointment[]>([]);
   const [pacientes, setPacientes] = useState<PatientDetail[]>([]);
   const [loading, setLoading] = useState(true);
 
@@ -116,7 +116,7 @@ export function DashboardMedicoScreen() {
     ])
       .then(([db, ag, pt]) => {
         setDashboard(db);
-        setAgenda(ag.data);
+        setAgenda((ag as AgendaResponse).appointments ?? []);
         setPacientes(pt.data);
       })
       .catch(() => {})
@@ -152,9 +152,8 @@ export function DashboardMedicoScreen() {
         {/* STATS */}
         <View style={styles.statsRow}>
           {([
-            [String(dashboard?.today_appointments ?? '—'), 'Consultas hoje', colors.primaryDk],
+            [String(dashboard?.appointments_today ?? '—'), 'Consultas hoje', colors.primaryDk],
             [String(dashboard?.active_patients ?? '—'), 'Pacientes ativas', colors.text],
-            [String(dashboard?.pending_exams ?? '—'), 'Exames pendentes', colors.accent],
           ] as [string, string, string][]).map(([v, l, c]) => (
             <View key={l} style={styles.statCard}>
               <Text style={[styles.statNum, { color: c }]}>{v}</Text>
@@ -176,36 +175,29 @@ export function DashboardMedicoScreen() {
                 </TouchableOpacity>
               </View>
               {agenda.length === 0 && <Text style={styles.empty}>Nenhum item na agenda de hoje.</Text>}
-              {agenda.slice(0, 4).map((a) => (
-                <View
-                  key={a.id}
-                  style={[styles.apptCard, a.status === 'now' && { borderWidth: 1.5, borderColor: colors.accent }]}
-                >
-                  <View style={styles.timeCol}>
-                    <Text style={[styles.hora, a.status === 'now' && { color: colors.accent }]}>{a.hora}</Text>
-                    <Text style={styles.dur}>{durationLabel(a.duration_minutes)}</Text>
+              {agenda.slice(0, 4).map((a) => {
+                const isDone = a.status === 'completed';
+                return (
+                  <View key={a.id} style={[styles.apptCard, a.status === 'pending' && { borderWidth: 1.5, borderColor: colors.accent }]}>
+                    <View style={styles.timeCol}>
+                      <Text style={[styles.hora, a.status === 'pending' && { color: colors.accent }]}>
+                        {a.time.slice(0, 5)}
+                      </Text>
+                      <Text style={styles.dur}>{durationLabel(a.duration_minutes)}</Text>
+                    </View>
+                    <View style={[styles.divider, isDone ? styles.divDone : styles.divNext]} />
+                    <View style={{ flex: 1, minWidth: 0 }}>
+                      <Text style={styles.apptType}>{a.type}</Text>
+                      {a.location ? <Text style={styles.apptType} numberOfLines={1}>{a.location}</Text> : null}
+                    </View>
+                    <View style={[styles.apptBadge, isDone ? styles.bdDone : styles.bdNext]}>
+                      <Text style={[styles.apptBadgeText, { color: isDone ? colors.primaryDk : colors.textMid }]}>
+                        {isDone ? 'Realizada' : a.status === 'confirmed' ? 'Confirmada' : 'Pendente'}
+                      </Text>
+                    </View>
                   </View>
-                  <View style={[
-                    styles.divider,
-                    a.status === 'done' ? styles.divDone : a.status === 'now' ? styles.divNow : styles.divNext,
-                  ]} />
-                  <View style={{ flex: 1, minWidth: 0 }}>
-                    <Text style={styles.apptName} numberOfLines={1}>{a.patient_name}</Text>
-                    <Text style={styles.apptType}>{a.type}</Text>
-                  </View>
-                  <View style={[
-                    styles.apptBadge,
-                    a.status === 'done' ? styles.bdDone : a.status === 'now' ? styles.bdNow : styles.bdNext,
-                  ]}>
-                    <Text style={[
-                      styles.apptBadgeText,
-                      { color: a.status === 'done' ? colors.primaryDk : a.status === 'now' ? colors.accent : colors.textMid },
-                    ]}>
-                      {a.status === 'done' ? 'Realizada' : a.status === 'now' ? 'Agora' : 'Próxima'}
-                    </Text>
-                  </View>
-                </View>
-              ))}
+                );
+              })}
             </View>
 
             {/* PACIENTES */}

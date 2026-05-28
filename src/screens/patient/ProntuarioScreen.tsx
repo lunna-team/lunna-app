@@ -10,18 +10,6 @@ import { useAuth } from '../../contexts/AuthContext';
 import { colors, spacing, radius } from '../../theme';
 import type { PatientProntuario } from '../../types';
 
-const SEVERITY_COLORS: Record<string, string> = {
-  low: '#3CB371',
-  medium: colors.yellow ?? '#F5A623',
-  high: colors.accent,
-};
-
-const SEVERITY_LABELS: Record<string, string> = {
-  low: 'Leve',
-  medium: 'Atenção',
-  high: 'Alto',
-};
-
 function formatDate(iso: string | null): string {
   if (!iso) return '—';
   return new Date(iso).toLocaleDateString('pt-BR');
@@ -53,8 +41,8 @@ export function ProntuarioScreen() {
     if (isNaN(weight)) return;
     setSaving(true);
     try {
-      const updated = await patientsService.updateProntuario(user.id, { weight_initial_kg: weight });
-      setProntuario(updated);
+      await patientsService.updateProntuario(user.id, { weight_initial_kg: String(weight) });
+      await load();
       setFabModalVisible(false);
       setPesoInput('');
     } catch {
@@ -62,10 +50,6 @@ export function ProntuarioScreen() {
       setSaving(false);
     }
   };
-
-  const pesos = prontuario?.weight_history ?? [];
-  const alturas = prontuario?.uterine_height_history ?? [];
-  const complicacoes = prontuario?.complications ?? [];
 
   return (
     <View style={[styles.container, { paddingBottom: insets.bottom }]}>
@@ -79,14 +63,15 @@ export function ProntuarioScreen() {
         <ScrollView contentContainerStyle={{ padding: spacing.lg, paddingBottom: 100 }}>
           <View style={styles.darkCard}>
             <Text style={styles.darkName}>{user?.name ?? '—'}</Text>
-            <Text style={styles.darkSub}>Prontuário do paciente</Text>
+            <Text style={styles.darkSub}>Prontuário gestacional</Text>
             <View style={styles.darkGrid}>
               {[
                 ['DUM', formatDate(prontuario?.lmp_date ?? null)],
                 ['DPP', formatDate(prontuario?.edd ?? null)],
                 ['Semana', prontuario?.current_week ? `${prontuario.current_week}ª` : '—'],
                 ['Tipo Sang.', prontuario?.blood_type ?? '—'],
-                ['Alergias', prontuario?.allergies ?? 'Nenhuma'],
+                ['Altura', prontuario?.height_cm ? `${prontuario.height_cm} cm` : '—'],
+                ['Peso Inicial', prontuario?.weight_initial_kg ? `${prontuario.weight_initial_kg} kg` : '—'],
               ].map(([l, v]) => (
                 <View key={l} style={styles.darkItem}>
                   <Text style={styles.darkLabel}>{l}</Text>
@@ -96,76 +81,28 @@ export function ProntuarioScreen() {
             </View>
           </View>
 
-          <Text style={styles.sectionTitle}>Evolução do Peso</Text>
-          {pesos.length === 0 ? (
-            <Text style={styles.empty}>Nenhum registro de peso.</Text>
-          ) : (
-            <View style={styles.table}>
-              <View style={[styles.tableRow, styles.tableHead]}>
-                <Text style={[styles.tableCell, styles.tableCellHead]}>Semana</Text>
-                <Text style={[styles.tableCell, styles.tableCellHead]}>Peso</Text>
-                <Text style={[styles.tableCell, styles.tableCellHead]}>Ganho</Text>
-              </View>
-              {pesos.map((p, i) => {
-                const ganho = i === 0 ? '+0,0 kg' : `+${(p.weight_kg - pesos[i - 1].weight_kg).toFixed(1).replace('.', ',')} kg`;
-                return (
-                  <View key={i} style={styles.tableRow}>
-                    <Text style={styles.tableCell}>Sem. {p.week}</Text>
-                    <Text style={styles.tableCell}>{p.weight_kg.toFixed(1).replace('.', ',')} kg</Text>
-                    <Text style={[styles.tableCell, { color: colors.primaryDk, fontWeight: '600' }]}>{ganho}</Text>
-                  </View>
-                );
-              })}
-            </View>
-          )}
-
-          <Text style={styles.sectionTitle}>Altura Uterina</Text>
-          {alturas.length === 0 ? (
-            <Text style={styles.empty}>Nenhum registro de altura uterina.</Text>
-          ) : (
-            <View style={styles.table}>
-              <View style={[styles.tableRow, styles.tableHead]}>
-                <Text style={[styles.tableCell, styles.tableCellHead]}>Semana</Text>
-                <Text style={[styles.tableCell, styles.tableCellHead]}>AU</Text>
-              </View>
-              {alturas.map((a, i) => (
-                <View key={i} style={styles.tableRow}>
-                  <Text style={styles.tableCell}>Sem. {a.week}</Text>
-                  <Text style={[styles.tableCell, { color: colors.primaryDk, fontWeight: '600' }]}>{a.height_cm} cm</Text>
-                </View>
-              ))}
-            </View>
-          )}
-
-          <Text style={styles.sectionTitle}>Posição do Bebê</Text>
-          <View style={styles.infoCard}>
-            <Text style={styles.infoValue}>
-              🫁 {prontuario?.fetal_position ?? 'Não registrado'}
-            </Text>
-            {prontuario?.fetal_position && (
-              <Text style={styles.infoSub}>Registrado pela equipe médica</Text>
-            )}
-          </View>
-
-          {complicacoes.length > 0 && (
+          {prontuario?.imc && (
             <>
-              <Text style={styles.sectionTitle}>Intercorrências</Text>
-              {complicacoes.map((c, i) => {
-                const color = SEVERITY_COLORS[c.severity] ?? colors.textMid;
-                return (
-                  <View key={i} style={[styles.interCard, { borderLeftColor: color }]}>
-                    <Text style={styles.interTitulo}>{c.description}</Text>
-                    <Text style={styles.interDesc}>Semana {c.week}</Text>
-                    <View style={[styles.interBadge, { backgroundColor: color + '22' }]}>
-                      <Text style={[styles.interBadgeText, { color }]}>
-                        {SEVERITY_LABELS[c.severity] ?? c.severity}
-                      </Text>
-                    </View>
-                  </View>
-                );
-              })}
+              <Text style={styles.sectionTitle}>IMC</Text>
+              <View style={styles.infoCard}>
+                <Text style={styles.infoValue}>⚖️ {prontuario.imc}</Text>
+                <Text style={styles.infoSub}>Índice de Massa Corporal</Text>
+              </View>
             </>
           )}
+
+          <Text style={styles.sectionTitle}>Contato</Text>
+          <View style={styles.infoCard}>
+            {prontuario?.user_email ? (
+              <Text style={styles.infoValue}>✉️ {prontuario.user_email}</Text>
+            ) : null}
+            {prontuario?.user_phone ? (
+              <Text style={[styles.infoValue, { marginTop: 8 }]}>📞 {prontuario.user_phone}</Text>
+            ) : null}
+            {!prontuario?.user_email && !prontuario?.user_phone && (
+              <Text style={styles.infoSub}>Sem contato registrado.</Text>
+            )}
+          </View>
         </ScrollView>
       )}
 
@@ -214,7 +151,6 @@ export function ProntuarioScreen() {
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: colors.bg },
   center: { flex: 1, justifyContent: 'center', alignItems: 'center' },
-  empty: { fontSize: 13, color: colors.textMid, marginBottom: 24 },
   darkCard: { backgroundColor: colors.darkCard, borderRadius: radius.lg, padding: 20, marginBottom: 24 },
   darkName: { fontSize: 20, fontWeight: '800', color: colors.white, marginBottom: 2 },
   darkSub: { fontSize: 12, color: 'rgba(255,255,255,0.6)', marginBottom: 16 },
@@ -223,19 +159,9 @@ const styles = StyleSheet.create({
   darkLabel: { fontSize: 10, color: 'rgba(255,255,255,0.5)', fontWeight: '600', textTransform: 'uppercase', marginBottom: 2 },
   darkValue: { fontSize: 14, color: colors.white, fontWeight: '600' },
   sectionTitle: { fontSize: 17, fontWeight: '800', color: colors.text, marginBottom: 12 },
-  table: { backgroundColor: colors.white, borderRadius: radius.md, overflow: 'hidden', marginBottom: 24, shadowColor: '#000', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.04, shadowRadius: 8, elevation: 2 },
-  tableRow: { flexDirection: 'row', paddingHorizontal: 16, paddingVertical: 12, borderBottomWidth: 1, borderBottomColor: colors.bg },
-  tableHead: { backgroundColor: colors.bg },
-  tableCell: { flex: 1, fontSize: 13, color: colors.text },
-  tableCellHead: { fontWeight: '700', color: colors.textMid, fontSize: 11, textTransform: 'uppercase' },
   infoCard: { backgroundColor: colors.white, borderRadius: radius.md, padding: 16, marginBottom: 24, shadowColor: '#000', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.04, shadowRadius: 8, elevation: 2 },
-  infoValue: { fontSize: 18, fontWeight: '700', color: colors.text, marginBottom: 4 },
+  infoValue: { fontSize: 16, fontWeight: '700', color: colors.text, marginBottom: 4 },
   infoSub: { fontSize: 12, color: colors.textMid },
-  interCard: { backgroundColor: colors.white, borderRadius: radius.md, padding: 16, marginBottom: 10, borderLeftWidth: 4, shadowColor: '#000', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.04, shadowRadius: 8, elevation: 2 },
-  interTitulo: { fontSize: 14, fontWeight: '700', color: colors.text, marginBottom: 4 },
-  interDesc: { fontSize: 13, color: colors.textMid, lineHeight: 18, marginBottom: 8 },
-  interBadge: { alignSelf: 'flex-start', paddingHorizontal: 10, paddingVertical: 3, borderRadius: radius.full },
-  interBadgeText: { fontSize: 11, fontWeight: '700' },
   fab: { position: 'absolute', right: spacing.lg, backgroundColor: colors.accent, paddingHorizontal: 20, paddingVertical: 16, borderRadius: radius.full, shadowColor: colors.accent, shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.4, shadowRadius: 8, elevation: 6 },
   fabText: { fontSize: 14, fontWeight: '700', color: colors.white },
   overlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.4)' },

@@ -1,12 +1,16 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
-  View, Text, StyleSheet, ScrollView, TouchableOpacity, StatusBar, TextInput, ActivityIndicator,
+  View, Text, StyleSheet, ScrollView, TouchableOpacity, StatusBar, ActivityIndicator,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { patientsService } from '../../services/patients';
 import { useAuth } from '../../contexts/AuthContext';
 import { colors, spacing, radius } from '../../theme';
-import type { SecretaryDashboard, PatientDetail } from '../../types';
+import type { SecretaryDashboard } from '../../types';
+
+function getInitials(name: string): string {
+  return name.split(' ').slice(0, 2).map((n) => n[0]).join('').toUpperCase();
+}
 
 const ACOES = [
   { icon: '📅', label: 'Novo Agendamento' },
@@ -15,53 +19,19 @@ const ACOES = [
   { icon: '📊', label: 'Relatório do Dia' },
 ];
 
-const statusInfo = (s: string) => {
-  if (s === 'done') return { bg: 'rgba(141,170,145,0.15)', color: colors.primaryDk, label: 'Realizada' };
-  if (s === 'now') return { bg: 'rgba(229,152,125,0.18)', color: colors.accent, label: 'Em curso' };
-  if (s === 'confirmed') return { bg: 'rgba(141,170,145,0.1)', color: colors.primary, label: 'Confirmada' };
-  return { bg: 'rgba(245,166,35,0.12)', color: colors.yellow, label: 'Pendente' };
-};
-
-function getInitials(name: string): string {
-  return name.split(' ').slice(0, 2).map((n) => n[0]).join('').toUpperCase();
-}
-
 export function DashboardSecretariaScreen() {
   const { user } = useAuth();
   const [dashboard, setDashboard] = useState<SecretaryDashboard | null>(null);
-  const [pacientes, setPacientes] = useState<PatientDetail[]>([]);
-  const [busca, setBusca] = useState('');
   const [loading, setLoading] = useState(true);
   const insets = useSafeAreaInsets();
-  const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useEffect(() => {
-    Promise.all([
-      patientsService.getSecretaryDashboard(),
-      patientsService.getDoctorPatients('secretary', { limit: 30 }),
-    ])
-      .then(([db, pt]) => {
-        setDashboard(db);
-        setPacientes(pt.data);
-      })
+    patientsService.getSecretaryDashboard()
+      .then((db) => setDashboard(db))
       .catch(() => {})
       .finally(() => setLoading(false));
   }, []);
 
-  const handleBusca = (text: string) => {
-    setBusca(text);
-    if (debounceRef.current) clearTimeout(debounceRef.current);
-    debounceRef.current = setTimeout(() => {
-      patientsService
-        .getDoctorPatients('secretary', { search: text || undefined, limit: 30 })
-        .then((res) => setPacientes(res.data))
-        .catch(() => {});
-    }, 300);
-  };
-
-  const filtradas = busca
-    ? pacientes.filter((p) => p.name.toLowerCase().includes(busca.toLowerCase()))
-    : pacientes;
 
   const today = new Date().toLocaleDateString('pt-BR', { weekday: 'short', day: 'numeric', month: 'long', year: 'numeric' });
   const firstName = user?.name?.split(' ')[0] ?? '';
@@ -83,7 +53,7 @@ export function DashboardSecretariaScreen() {
         {/* STATS */}
         <View style={styles.statsRow}>
           {[
-            [String(dashboard?.today_appointments ?? '—'), 'Consultas'],
+            [String(dashboard?.appointments_today ?? '—'), 'Consultas'],
             [String(dashboard?.confirmed ?? '—'), 'Confirmadas'],
             [String(dashboard?.pending ?? '—'), 'Pendentes'],
             [String(dashboard?.total_patients ?? '—'), 'Pacientes'],
@@ -106,41 +76,9 @@ export function DashboardSecretariaScreen() {
           ))}
         </View>
 
-        {/* BUSCA DE PACIENTES */}
-        <Text style={[styles.sectionTitle, { marginTop: 24 }]}>Pacientes</Text>
-        <View style={{ paddingHorizontal: spacing.lg, marginBottom: 12 }}>
-          <TextInput
-            style={styles.searchInput}
-            placeholder="Buscar por nome..."
-            placeholderTextColor={colors.textInactive}
-            value={busca}
-            onChangeText={handleBusca}
-          />
-        </View>
-        {loading ? (
+        {/* STATS LOADING */}
+        {loading && (
           <ActivityIndicator size="small" color={colors.primary} style={{ marginTop: 20 }} />
-        ) : (
-          <>
-            {filtradas.map((p) => (
-              <View key={p.id} style={styles.pacienteCard}>
-                <View style={styles.pacienteAvatar}>
-                  <Text style={styles.pacienteAvatarText}>{getInitials(p.name)}</Text>
-                </View>
-                <View style={{ flex: 1 }}>
-                  <Text style={styles.pacienteNome}>{p.name}</Text>
-                  {p.prontuario && <Text style={styles.pacienteMeta}>Prontuário {p.prontuario}</Text>}
-                </View>
-                {p.current_week != null && (
-                  <View style={styles.weekBadge}>
-                    <Text style={styles.weekText}>Sem. {p.current_week}</Text>
-                  </View>
-                )}
-              </View>
-            ))}
-            {filtradas.length === 0 && (
-              <Text style={styles.emptyText}>Nenhuma paciente encontrada</Text>
-            )}
-          </>
         )}
       </ScrollView>
 

@@ -117,10 +117,6 @@ function GeralTab({ patientId }: { patientId: string }) {
   const [prontuario, setProntuario] = useState<PatientProntuario | null>(null);
   const [notas, setNotas] = useState('');
   const [loading, setLoading] = useState(true);
-  const [editClin, setEditClin] = useState(false);
-  const [alergias, setAlergias] = useState('');
-  const [saving, setSaving] = useState(false);
-
   useEffect(() => {
     Promise.all([
       patientsService.getPatient(patientId),
@@ -130,7 +126,6 @@ function GeralTab({ patientId }: { patientId: string }) {
       .then(([pt, pr, nota]) => {
         setPatient(pt);
         setProntuario(pr);
-        setAlergias(pr.allergies ?? '');
         if (nota) setNotas(nota);
       })
       .catch(() => {})
@@ -140,18 +135,6 @@ function GeralTab({ patientId }: { patientId: string }) {
   const saveNotas = async (text: string) => {
     setNotas(text);
     await storage.set(STORAGE_KEYS.notasMedica, text);
-  };
-
-  const saveClin = async () => {
-    setSaving(true);
-    try {
-      const updated = await patientsService.updateProntuario(patientId, { allergies: alergias });
-      setProntuario(updated);
-    } catch {
-    } finally {
-      setSaving(false);
-      setEditClin(false);
-    }
   };
 
   const infoRow = (label: string, value: string) => (
@@ -191,9 +174,6 @@ function GeralTab({ patientId }: { patientId: string }) {
               <Text style={s.chipText}>DPP: {formatDate(prontuario.edd)}</Text>
             </View>
           )}
-          {prontuario?.fetal_position && (
-            <View style={s.chip}><Text style={s.chipText}>{prontuario.fetal_position}</Text></View>
-          )}
         </View>
       </View>
 
@@ -203,20 +183,16 @@ function GeralTab({ patientId }: { patientId: string }) {
           {patient?.prontuario && <Text style={s.infoKey}>{patient.prontuario}</Text>}
         </View>
         {infoRow('Tipo sanguíneo', patient?.blood_type ?? '—')}
-        {infoRow('Alergias', prontuario?.allergies ?? '—')}
         {infoRow('DUM', prontuario?.lmp_date ? formatDate(prontuario.lmp_date) : '—')}
         {infoRow('DPP', prontuario?.edd ? formatDate(prontuario.edd) : '—')}
-        {infoRow('Posição fetal', prontuario?.fetal_position ?? '—')}
+        {infoRow('Altura', prontuario?.height_cm ? `${prontuario.height_cm} cm` : '—')}
+        {infoRow('Peso inicial', prontuario?.weight_initial_kg ? `${prontuario.weight_initial_kg} kg` : '—')}
       </View>
 
       <View style={[s.infoCard, { marginBottom: 12 }]}>
         <View style={s.infoCardHeader}>
-          <Text style={s.infoCardTitle}>Dados Clínicos</Text>
-          <TouchableOpacity style={s.editBtn} onPress={() => setEditClin(true)}>
-            <Text style={s.editBtnText}>✏️ Editar</Text>
-          </TouchableOpacity>
+          <Text style={s.infoCardTitle}>Contato</Text>
         </View>
-        {infoRow('Alergias', alergias || '—')}
         {infoRow('E-mail', patient?.email ?? '—')}
         {infoRow('Telefone', patient?.phone ?? '—')}
       </View>
@@ -232,13 +208,6 @@ function GeralTab({ patientId }: { patientId: string }) {
           placeholderTextColor={colors.textInactive}
         />
       </View>
-
-      <Sheet visible={editClin} onClose={() => setEditClin(false)} title="Editar Dados Clínicos">
-        <Field label="Alergias" value={alergias} onChange={setAlergias} />
-        <TouchableOpacity style={[s.saveBtn, saving && { opacity: 0.6 }]} onPress={saveClin} disabled={saving}>
-          <Text style={s.saveBtnText}>{saving ? 'Salvando...' : 'Salvar'}</Text>
-        </TouchableOpacity>
-      </Sheet>
     </ScrollView>
   );
 }

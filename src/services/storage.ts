@@ -30,6 +30,7 @@ export const storage = {
 export const STORAGE_KEYS = {
   onboarded: 'gv_onboarded',
   accessToken: 'gv_access_token',
+  refreshToken: 'gv_refresh_token',
   user: 'gv_user',
   // legado — ainda usados localmente por algumas telas
   contracoes: 'gv_contracoes',
