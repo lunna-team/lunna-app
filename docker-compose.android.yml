@@ -1,0 +1,9 @@
+services:
+  android-build:
+    build:
+      context: .
+      dockerfile: Dockerfile.android
+    container_name: lunna-android-build
+    volumes:
+      # APK output saved to ./output/ on the host
+      - ./output:/app/android/app/build/outputs/apk/debug

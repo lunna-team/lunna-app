@@ -1,0 +1,16 @@
+FROM node:20-alpine
+
+WORKDIR /app
+
+RUN apk add --no-cache bash git
+
+COPY package*.json ./
+RUN npm ci --prefer-offline
+
+COPY . .
+
+# Metro bundler + Expo Go ports
+EXPOSE 8081 19000 19001
+
+# HOST=0.0.0.0 required to accept connections from outside the container
+CMD ["npx", "expo", "start", "--host", "lan", "--port", "8081"]
