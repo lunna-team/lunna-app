@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { View, Text, StyleSheet, ScrollView, TouchableOpacity } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { ScreenHeader } from '../../components/ScreenHeader';
+import { ScreenHeader } from '../../components/common/ScreenHeader';
 import { colors, spacing, radius } from '../../theme';
 
 const DIA = [

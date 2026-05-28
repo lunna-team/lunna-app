@@ -4,7 +4,7 @@ import {
   Modal, TouchableWithoutFeedback,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { ScreenHeader } from '../../components/ScreenHeader';
+import { ScreenHeader } from '../../components/common/ScreenHeader';
 import { storage, STORAGE_KEYS } from '../../services/storage';
 import { colors, spacing, radius } from '../../theme';
 

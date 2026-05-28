@@ -1,7 +1,7 @@
 import React, { useState, useRef } from 'react';
 import { View, Text, StyleSheet, FlatList, TextInput, TouchableOpacity, KeyboardAvoidingView, Platform, ScrollView } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { ScreenHeader } from '../../components/ScreenHeader';
+import { ScreenHeader } from '../../components/common/ScreenHeader';
 import { colors, spacing, radius } from '../../theme';
 
 interface Msg { id: number; text: string; fromMe: boolean; }

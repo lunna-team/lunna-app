@@ -4,8 +4,8 @@ import {
   Alert, ScrollView,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { ScreenHeader } from '../../components/ScreenHeader';
-import { StatBox } from '../../components/StatBox';
+import { ScreenHeader } from '../../components/common/ScreenHeader';
+import { StatBox } from '../../components/common/StatBox';
 import { vitalsService } from '../../services/vitals';
 import { useAuth } from '../../contexts/AuthContext';
 import { colors, spacing, radius } from '../../theme';

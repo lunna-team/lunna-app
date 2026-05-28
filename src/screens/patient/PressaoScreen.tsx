@@ -4,9 +4,9 @@ import {
   TextInput, Alert, ActivityIndicator,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { ScreenHeader } from '../../components/ScreenHeader';
-import { StatBox } from '../../components/StatBox';
-import { BottomSheet } from '../../components/BottomSheet';
+import { ScreenHeader } from '../../components/common/ScreenHeader';
+import { StatBox } from '../../components/common/StatBox';
+import { BottomSheet } from '../../components/common/BottomSheet';
 import { vitalsService } from '../../services/vitals';
 import { useAuth } from '../../contexts/AuthContext';
 import { colors, spacing, radius } from '../../theme';

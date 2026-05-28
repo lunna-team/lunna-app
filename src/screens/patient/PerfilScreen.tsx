@@ -4,7 +4,7 @@ import {
   Alert, ActivityIndicator,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { ScreenHeader } from '../../components/ScreenHeader';
+import { ScreenHeader } from '../../components/common/ScreenHeader';
 import { usersService } from '../../services/users';
 import { useAuth } from '../../contexts/AuthContext';
 import type { Clinic } from '../../types';

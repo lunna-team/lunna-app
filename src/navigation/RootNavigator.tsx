@@ -1,7 +1,7 @@
 import React from 'react';
 import { View, ActivityIndicator } from 'react-native';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
-import { LoginScreen } from '../screens/LoginScreen';
+import { LoginScreen } from '../screens/auth/LoginScreen';
 import { PatientNavigator } from './PatientNavigator';
 import { DoctorNavigator } from './DoctorNavigator';
 import { SecretaryNavigator } from './SecretaryNavigator';

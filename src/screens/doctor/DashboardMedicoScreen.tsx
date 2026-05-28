@@ -5,7 +5,7 @@ import { useNavigation } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { DoctorStackParams } from '../../navigation/DoctorNavigator';
-import { RiskBadge } from '../../components/RiskBadge';
+import { RiskBadge } from '../../components/domain/RiskBadge';
 import { colors, spacing, radius } from '../../theme';
 
 type Nav = NativeStackNavigationProp<DoctorStackParams>;

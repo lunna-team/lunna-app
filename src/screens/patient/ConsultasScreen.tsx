@@ -4,8 +4,8 @@ import {
   Alert, ActivityIndicator, TextInput,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { ScreenHeader } from '../../components/ScreenHeader';
-import { BottomSheet } from '../../components/BottomSheet';
+import { ScreenHeader } from '../../components/common/ScreenHeader';
+import { BottomSheet } from '../../components/common/BottomSheet';
 import { appointmentsService } from '../../services/appointments';
 import { useAuth } from '../../contexts/AuthContext';
 import { colors, spacing, radius } from '../../theme';

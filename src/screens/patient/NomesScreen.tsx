@@ -5,7 +5,7 @@ import {
 } from 'react-native';
 import Svg, { Path, Polyline, Line, Rect } from 'react-native-svg';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { ScreenHeader } from '../../components/ScreenHeader';
+import { ScreenHeader } from '../../components/common/ScreenHeader';
 import { colors, spacing, radius } from '../../theme';
 
 interface Nome {
