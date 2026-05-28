@@ -155,7 +155,7 @@ lunna-app/
 │   │   ├── patient/           # 13 telas da paciente
 │   │   ├── doctor/            # 4 telas do médico
 │   │   └── secretary/         # 1 tela da secretária
-│   ├── services/              # api.ts, auth.ts, vitals.ts, storage.ts…
+│   ├── services/              # api.ts, auth.ts, patients.ts, vitals.ts, exams.ts… (14 serviços)
 │   ├── theme/                 # Paleta de cores e espaçamentos
 │   └── types/                 # TypeScript interfaces globais
 └── docs/
@@ -166,8 +166,9 @@ lunna-app/
 ### Autenticação e roteamento
 
 1. `POST /api/v1/auth/login` → `access_token` (24h) + `refresh_token` (7d)
-2. Token armazenado em AsyncStorage com chave `gv_access_token`
-3. `RootNavigator` lê `user.role` do `AuthContext` e renderiza:
+2. Tokens armazenados em AsyncStorage: `gv_access_token` e `gv_refresh_token`
+3. Interceptor Axios renova automaticamente o `access_token` em respostas 401
+4. `RootNavigator` lê `user.role` do `AuthContext` e renderiza:
    - `PatientNavigator` — role `patient`
    - `DoctorNavigator` — role `doctor`
    - `SecretaryNavigator` — role `secretary`
@@ -177,6 +178,25 @@ lunna-app/
 Após o login, o app chama `GET /api/v1/users/{id}/clinic` e aplica as cores
 retornadas via `src/theme/index.ts`. Cores primária, secundária e de destaque
 são injetadas globalmente.
+
+### Serviços
+
+| Serviço | Responsabilidade |
+|---|---|
+| `auth.ts` | login, logout, refresh token |
+| `users.ts` | perfil, clínica, push token, onboarding |
+| `patients.ts` | pacientes, prontuário, agenda médica, dashboards (médico e secretária) |
+| `appointments.ts` | consultas: listar, criar, confirmar, remarcar |
+| `vitals.ts` | sinais vitais: contrações, glicose, pressão arterial |
+| `exams.ts` | USG, vacinas, exames laboratoriais |
+| `medications.ts` | prescrições (leitura; criação é privilege do médico na web) |
+| `messages.ts` | chat HTTP + WebSocket nativo |
+| `babyNames.ts` | listagem de nomes e favoritos |
+| `fetalDevelopment.ts` | dados semanais de desenvolvimento fetal (endpoint público) |
+| `announcements.ts` | avisos da clínica |
+| `notifications.ts` | notificações in-app |
+| `storage.ts` | wrapper AsyncStorage com `STORAGE_KEYS` tipados |
+| `api.ts` | cliente Axios base com interceptor de token |
 
 ---
 

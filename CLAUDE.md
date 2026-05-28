@@ -73,15 +73,23 @@ lunna-app/
 │   │   └── secretary/         # 1 tela
 │   ├── services/
 │   │   ├── api.ts             # Axios base client + interceptor de token
-│   │   ├── auth.ts            # login, logout, refresh
-│   │   ├── appointments.ts
-│   │   ├── users.ts
-│   │   ├── vitals.ts
+│   │   ├── auth.ts            # login, logout, refresh (inclui renovação de token)
+│   │   ├── users.ts           # perfil, clínica, push token, onboarding
+│   │   ├── patients.ts        # pacientes, prontuário, agenda, dashboards
+│   │   ├── appointments.ts    # consultas (listar, criar, confirmar, remarcar)
+│   │   ├── vitals.ts          # sinais vitais (contrações, glicose, pressão)
+│   │   ├── exams.ts           # USG, vacinas, exames laboratoriais
+│   │   ├── medications.ts     # medicamentos/prescrições
+│   │   ├── messages.ts        # chat HTTP + WebSocket
+│   │   ├── babyNames.ts       # nomes de bebê + favoritos
+│   │   ├── fetalDevelopment.ts # dados semanais de desenvolvimento fetal
+│   │   ├── announcements.ts   # avisos da clínica
+│   │   ├── notifications.ts   # notificações in-app
 │   │   └── storage.ts         # Wrapper AsyncStorage + STORAGE_KEYS
 │   ├── theme/
 │   │   └── index.ts           # colors, spacing, radius
 │   └── types/
-│       └── index.ts           # User, Appointment, Vitals, etc.
+│       └── index.ts           # User, Appointment, Vitals, PatientDetail, AgendaResponse, etc.
 └── docs/
     ├── plans/                 # Decisões de arquitetura
     └── archive/html-prototype/ # Protótipo HTML original (referência de design)
@@ -163,6 +171,58 @@ Definido em `src/theme/index.ts`. Variáveis de referência:
 | `ScreenHeader` | `components/common/` | Header com botão voltar |
 | `StatBox` | `components/common/` | Caixas de estatísticas (stats row) |
 | `RiskBadge` | `components/domain/` | Badge colorido de risco gestacional |
+
+---
+
+## Serviços — Padrões e Gotchas
+
+### Mapeamento de resposta da API
+
+Vários endpoints retornam estruturas aninhadas que são achatadas pela camada de serviço antes de chegarem às telas:
+
+- **`patients.ts`**: `PatientListItemRaw` (com `user: UserResponse` aninhado) → `PatientDetail` via `flattenPatient()`
+- **`patients.ts`**: `ProntuarioRaw` (com `dados_clinicos` e `user` aninhados) → `PatientProntuario` via `flattenProntuario()`
+- As telas sempre recebem tipos "achatados" — nunca acesse `.user.name` diretamente nas telas
+
+### Tipos importantes
+
+| Tipo | Observação |
+|---|---|
+| `AgendaResponse` | Retorno de `getDoctorAgenda()` — `{ view, appointments?, upcoming_births? }` (não é `PaginatedResponse`) |
+| `AgendaAppointment` | Item de agenda com `time` (string `HH:MM:SS`), `type`, `status`, `duration_minutes`, `location?` |
+| `BirthItem` | Item de parto previsto com `patient_id`, `name`, `edd`, `current_week?`, `hospital?` |
+| `BabyNameGender` | `'male' \| 'female' \| 'neutral'` — não usar `'M'` / `'F'` |
+| `GlucoseMoment` | `'fasting' \| 'after_meal' \| 'random'` — não usar `'post_breakfast'` etc. |
+| `PatientProntuario` | Campos planos derivados da API: `lmp_date`, `edd`, `current_week`, `blood_type`, `height_cm`, `weight_initial_kg`, `imc`, `user_name`, `user_email`, `user_phone` |
+| `DoctorDashboard` | Campo correto: `appointments_today` (não `today_appointments`) |
+| `SecretaryDashboard` | Campo correto: `appointments_today`, `confirmed`, `pending`, `total_patients` |
+
+### STORAGE_KEYS
+
+| Chave | Constante | Uso |
+|---|---|---|
+| `gv_access_token` | `STORAGE_KEYS.accessToken` | JWT de acesso (24h) |
+| `gv_refresh_token` | `STORAGE_KEYS.refreshToken` | JWT de refresh (7d) |
+| `gv_user` | `STORAGE_KEYS.user` | Objeto `User` serializado |
+| `gv_onboarded` | `STORAGE_KEYS.onboarded` | Flag de onboarding concluído |
+| `gv_notas_medica` | `STORAGE_KEYS.notasMedica` | Notas privadas do médico (local only) |
+
+### authService.refresh()
+
+Renova o `access_token` usando o `refresh_token` salvo em storage. Chamado automaticamente pelo interceptor do Axios em respostas 401.
+
+### WebSocket (ChatScreen)
+
+URL: `API_BASE_URL.replace('http', 'ws') + /patients/{id}/ws/chat?token=<jwt>`
+- Código de fechamento `4001` = token inválido → **não reconectar**
+- Qualquer outro código → reconectar com delay de 3s
+- Cleanup: `wsRef.current?.close()` no `useEffect` cleanup
+
+### examsService.updateVaccine
+
+```
+PATCH /patients/vaccines/{vaccineId}   ← sem patientId na rota
+```
 
 ---
 
