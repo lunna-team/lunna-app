@@ -35,22 +35,22 @@ export function RootNavigator() {
     );
   }
 
-  const initialRoute = isAuthenticated ? getInitialRoute(user?.role) : 'Login';
+  if (!isAuthenticated) {
+    return (
+      <Stack.Navigator screenOptions={{ headerShown: false }}>
+        <Stack.Screen name="Login" component={LoginScreen} />
+      </Stack.Navigator>
+    );
+  }
 
   return (
     <Stack.Navigator
       screenOptions={{ headerShown: false }}
-      initialRouteName={initialRoute}
+      initialRouteName={getInitialRoute(user?.role)}
     >
-      {!isAuthenticated ? (
-        <Stack.Screen name="Login" component={LoginScreen} />
-      ) : (
-        <>
-          <Stack.Screen name="Patient" component={PatientNavigator} />
-          <Stack.Screen name="Doctor" component={DoctorNavigator} />
-          <Stack.Screen name="Secretary" component={SecretaryNavigator} />
-        </>
-      )}
+      <Stack.Screen name="Patient" component={PatientNavigator} />
+      <Stack.Screen name="Doctor" component={DoctorNavigator} />
+      <Stack.Screen name="Secretary" component={SecretaryNavigator} />
     </Stack.Navigator>
   );
 }

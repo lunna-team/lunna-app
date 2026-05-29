@@ -1,6 +1,24 @@
 import { api } from './api';
 import type { Medication, PaginatedResponse } from '../types';
 
+export interface MedicationCreate {
+  name: string;
+  dosage: string;
+  frequency: string;
+  start_date: string;
+  end_date?: string;
+  instructions?: string;
+}
+
+export interface MedicationUpdate {
+  name?: string;
+  dosage?: string;
+  frequency?: string;
+  end_date?: string;
+  instructions?: string;
+  active?: boolean;
+}
+
 export const medicationsService = {
   list: (
     patientId: string,
@@ -15,4 +33,10 @@ export const medicationsService = {
       `/patients/${patientId}/medications${query}`,
     );
   },
+
+  create: (patientId: string, data: MedicationCreate) =>
+    api.post<Medication>(`/patients/${patientId}/medications`, data),
+
+  update: (medicationId: string, data: MedicationUpdate) =>
+    api.patch<Medication>(`/patients/medications/${medicationId}`, data),
 };

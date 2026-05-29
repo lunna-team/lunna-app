@@ -6,9 +6,10 @@ import {
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { ScreenHeader } from '../../components/common/ScreenHeader';
 import { patientsService } from '../../services/patients';
+import { appointmentsService } from '../../services/appointments';
 import { useAuth } from '../../contexts/AuthContext';
 import { colors, spacing, radius } from '../../theme';
-import type { PatientProntuario } from '../../types';
+import type { PatientProntuario, AppointmentEvolution } from '../../types';
 
 function formatDate(iso: string | null): string {
   if (!iso) return '—';
@@ -18,6 +19,7 @@ function formatDate(iso: string | null): string {
 export function ProntuarioScreen() {
   const { user } = useAuth();
   const [prontuario, setProntuario] = useState<PatientProntuario | null>(null);
+  const [evolutions, setEvolutions] = useState<AppointmentEvolution[]>([]);
   const [loading, setLoading] = useState(true);
   const [fabModalVisible, setFabModalVisible] = useState(false);
   const [pesoInput, setPesoInput] = useState('');
@@ -28,7 +30,14 @@ export function ProntuarioScreen() {
     if (!user?.id) return;
     patientsService
       .getProntuario(user.id)
-      .then(setProntuario)
+      .then((pr) => {
+        setProntuario(pr);
+        if (pr.patient_id) {
+          appointmentsService.getPatientEvolutions(pr.patient_id)
+            .then(setEvolutions)
+            .catch(() => {});
+        }
+      })
       .catch(() => {})
       .finally(() => setLoading(false));
   };
@@ -103,6 +112,37 @@ export function ProntuarioScreen() {
               <Text style={styles.infoSub}>Sem contato registrado.</Text>
             )}
           </View>
+
+          {evolutions.length > 0 && (
+            <>
+              <Text style={styles.sectionTitle}>Evolução das Consultas</Text>
+              <View style={[styles.infoCard, { padding: 0, overflow: 'hidden' }]}>
+                {/* Header */}
+                <View style={{ flexDirection: 'row', backgroundColor: colors.primaryLight, paddingHorizontal: 10, paddingVertical: 8 }}>
+                  {['Data', 'Peso', 'PA', 'AU', 'BCF', 'Edema'].map((h) => (
+                    <Text key={h} style={{ flex: 1, fontSize: 10, fontWeight: '700', color: colors.primaryDk, textAlign: 'center' }}>{h}</Text>
+                  ))}
+                </View>
+                {evolutions.map((evo, idx) => (
+                  <View key={evo.id} style={{
+                    flexDirection: 'row', paddingHorizontal: 10, paddingVertical: 9,
+                    backgroundColor: idx % 2 === 0 ? colors.white : colors.bg,
+                  }}>
+                    <Text style={styles.evoCell}>
+                      {new Date(evo.created_at).toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit' })}
+                    </Text>
+                    <Text style={styles.evoCell}>{evo.weight_kg ? `${evo.weight_kg}kg` : '—'}</Text>
+                    <Text style={styles.evoCell}>
+                      {evo.bp_systolic && evo.bp_diastolic ? `${evo.bp_systolic}/${evo.bp_diastolic}` : '—'}
+                    </Text>
+                    <Text style={styles.evoCell}>{evo.fundal_height_cm ? `${evo.fundal_height_cm}` : '—'}</Text>
+                    <Text style={styles.evoCell}>{evo.fetal_heart_rate ? `${evo.fetal_heart_rate}` : '—'}</Text>
+                    <Text style={styles.evoCell}>{evo.edema && evo.edema !== 'none' ? evo.edema : '—'}</Text>
+                  </View>
+                ))}
+              </View>
+            </>
+          )}
         </ScrollView>
       )}
 
@@ -172,4 +212,5 @@ const styles = StyleSheet.create({
   input: { backgroundColor: colors.bg, borderRadius: radius.sm, padding: 14, fontSize: 15, color: colors.text, marginBottom: 16 },
   saveBtn: { backgroundColor: colors.primary, borderRadius: radius.full, padding: 16, alignItems: 'center', marginTop: 8 },
   saveBtnText: { fontSize: 15, fontWeight: '700', color: colors.white },
+  evoCell: { flex: 1, fontSize: 11, color: colors.text, textAlign: 'center' },
 });

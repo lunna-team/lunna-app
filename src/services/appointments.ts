@@ -1,5 +1,5 @@
 import { api } from './api';
-import type { Appointment, PaginatedResponse } from '../types';
+import type { Appointment, AppointmentEvolution, EvolutionCreate, PaginatedResponse } from '../types';
 
 export const appointmentsService = {
   listPatientAppointments: (
@@ -30,4 +30,13 @@ export const appointmentsService = {
 
   cancelAppointment: (appointmentId: string, reason: string) =>
     api.delete<void>(`/appointments/${appointmentId}?reason=${encodeURIComponent(reason)}`),
+
+  saveEvolution: (appointmentId: string, data: EvolutionCreate) =>
+    api.post<AppointmentEvolution>(`/appointments/${appointmentId}/evolution`, data),
+
+  getEvolution: (appointmentId: string) =>
+    api.get<AppointmentEvolution>(`/appointments/${appointmentId}/evolution`),
+
+  getPatientEvolutions: (patientId: string) =>
+    api.get<AppointmentEvolution[]>(`/patients/${patientId}/evolutions`),
 };

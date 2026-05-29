@@ -4,6 +4,7 @@ import type {
   DoctorDashboard, AgendaView, AgendaResponse,
   SecretaryDashboard,
   PaginatedResponse, RiskLevel,
+  PatientAnamnesis, AnamneseCreate,
 } from '../types';
 
 // API-level shape for PatientListItemResponse (user.name is nested)
@@ -90,12 +91,16 @@ function flattenProntuario(raw: ProntuarioRaw): PatientProntuario {
 interface PatientUpdate {
   height_cm?: string;
   weight_initial_kg?: string;
+  imc?: string;
   blood_type?: string;
   risk_level?: RiskLevel;
   hospital?: string;
   acompanhante?: string;
   number_of_fetuses?: number;
+  parity?: string;
   cesarean_predicted?: boolean;
+  lmp_date?: string;
+  edd?: string;
 }
 
 export const patientsService = {
@@ -142,4 +147,11 @@ export const patientsService = {
   // ── Secretária ──────────────────────────────────────────────────────────────
   getSecretaryDashboard: () =>
     api.get<SecretaryDashboard>('/secretary/dashboard'),
+
+  // ── Anamnese ────────────────────────────────────────────────────────────────
+  getAnamnesis: (patientId: string) =>
+    api.get<PatientAnamnesis>(`/patients/${patientId}/anamnesis`),
+
+  saveAnamnesis: (patientId: string, data: AnamneseCreate) =>
+    api.post<PatientAnamnesis>(`/patients/${patientId}/anamnesis`, data),
 };
