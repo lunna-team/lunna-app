@@ -138,8 +138,13 @@ export function DashboardMedicoScreen() {
             <Text style={styles.name}>{greeting}</Text>
             <Text style={styles.date}>{currentDatePt()}</Text>
           </View>
-          <View style={styles.avatar}>
-            <Text style={styles.avatarText}>{getInitials(user?.name ?? '??')}</Text>
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+            <TouchableOpacity onPress={() => navigation.navigate('CardTemplate')} style={{ padding: 6 }}>
+              <Text style={{ fontSize: 20 }}>⚙️</Text>
+            </TouchableOpacity>
+            <View style={styles.avatar}>
+              <Text style={styles.avatarText}>{getInitials(user?.name ?? '??')}</Text>
+            </View>
           </View>
         </View>
 
