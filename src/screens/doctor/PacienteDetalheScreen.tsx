@@ -3,7 +3,8 @@ import {
   View, Text, StyleSheet, ScrollView, TouchableOpacity, TextInput,
   Modal, TouchableWithoutFeedback, ActivityIndicator,
 } from 'react-native';
-import { useRoute, RouteProp } from '@react-navigation/native';
+import { useNavigation, useRoute, RouteProp } from '@react-navigation/native';
+import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { DoctorStackParams } from '../../navigation/DoctorNavigator';
 import { ScreenHeader } from '../../components/common/ScreenHeader';
@@ -17,18 +18,24 @@ import type {
   PatientDetail, PatientProntuario,
   BloodPressureReading, GlucoseReading, GlucoseMoment,
   Appointment, Ultrasound, LabTest, Vaccine, VaccineStatus,
+  RiskLevel, AppointmentEvolution, EvolutionCreate, EdemaGrade,
+  PatientAnamnesis, AnamneseCreate, AlcoolFrequencia, Medication,
 } from '../../types';
+import { medicationsService, MedicationCreate } from '../../services/medications';
+import { EXAMES_PRIMEIRO_TRIMESTRE, EXAMES_SEGUNDO_TRIMESTRE, EXAMES_TERCEIRO_TRIMESTRE } from '../../constants';
 
 type RouteType = RouteProp<DoctorStackParams, 'PacienteDetalhe'>;
-type Tab = 'geral' | 'sinais' | 'consultas' | 'usg' | 'exames' | 'vacinas';
+type Tab = 'geral' | 'anamnese' | 'sinais' | 'consultas' | 'usg' | 'exames' | 'vacinas' | 'meds';
 
 const TABS: { key: Tab; label: string }[] = [
-  { key: 'geral', label: 'Geral' },
-  { key: 'sinais', label: 'Sinais Vitais' },
+  { key: 'geral',     label: 'Geral' },
+  { key: 'anamnese',  label: 'Anamnese' },
+  { key: 'sinais',    label: 'Sinais Vitais' },
   { key: 'consultas', label: 'Consultas' },
-  { key: 'usg', label: 'USG' },
-  { key: 'exames', label: 'Exames' },
-  { key: 'vacinas', label: 'Vacinas' },
+  { key: 'usg',       label: 'USG' },
+  { key: 'exames',    label: 'Exames' },
+  { key: 'vacinas',   label: 'Vacinas' },
+  { key: 'meds',      label: 'Medicamentos' },
 ];
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
@@ -113,28 +120,74 @@ function Row({ children }: { children: React.ReactNode }) {
 // ── GERAL TAB ─────────────────────────────────────────────────────────────────
 
 function GeralTab({ patientId }: { patientId: string }) {
+  const navigation = useNavigation<NativeStackNavigationProp<DoctorStackParams>>();
   const [patient, setPatient] = useState<PatientDetail | null>(null);
   const [prontuario, setProntuario] = useState<PatientProntuario | null>(null);
   const [notas, setNotas] = useState('');
   const [loading, setLoading] = useState(true);
-  useEffect(() => {
-    Promise.all([
+  const [editModal, setEditModal] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [form, setForm] = useState({
+    height_cm: '', weight_initial_kg: '', blood_type: '',
+    parity: '', acompanhante: '', hospital: '',
+    number_of_fetuses: '1', cesarean_predicted: false,
+    risk_level: 'low' as RiskLevel,
+    lmp_date: '', edd: '',
+  });
+
+  const loadData = async () => {
+    const [pt, pr, nota] = await Promise.all([
       patientsService.getPatient(patientId),
       patientsService.getProntuario(patientId),
       storage.get<string>(STORAGE_KEYS.notasMedica),
-    ])
-      .then(([pt, pr, nota]) => {
-        setPatient(pt);
-        setProntuario(pr);
-        if (nota) setNotas(nota);
-      })
-      .catch(() => {})
-      .finally(() => setLoading(false));
+    ]);
+    setPatient(pt);
+    setProntuario(pr);
+    if (nota) setNotas(nota);
+    setForm({
+      height_cm: pt.height_cm ?? '',
+      weight_initial_kg: pt.weight_initial_kg ?? '',
+      blood_type: pt.blood_type ?? '',
+      parity: (pt as any).parity ?? '',
+      acompanhante: (pt as any).acompanhante ?? '',
+      hospital: pt.hospital ?? '',
+      number_of_fetuses: String((pt as any).number_of_fetuses ?? 1),
+      cesarean_predicted: (pt as any).cesarean_predicted ?? false,
+      risk_level: (pt.risk_level as RiskLevel) ?? 'low',
+      lmp_date: pr?.lmp_date ?? '',
+      edd: pr?.edd ?? '',
+    });
+  };
+
+  useEffect(() => {
+    loadData().catch(() => {}).finally(() => setLoading(false));
   }, [patientId]);
 
   const saveNotas = async (text: string) => {
     setNotas(text);
     await storage.set(STORAGE_KEYS.notasMedica, text);
+  };
+
+  const salvarEdicao = async () => {
+    setSaving(true);
+    try {
+      await patientsService.updateProntuario(patientId, {
+        height_cm: form.height_cm || undefined,
+        weight_initial_kg: form.weight_initial_kg || undefined,
+        blood_type: form.blood_type || undefined,
+        parity: form.parity || undefined,
+        acompanhante: form.acompanhante || undefined,
+        hospital: form.hospital || undefined,
+        number_of_fetuses: form.number_of_fetuses ? parseInt(form.number_of_fetuses) : undefined,
+        cesarean_predicted: form.cesarean_predicted,
+        risk_level: form.risk_level,
+        lmp_date: form.lmp_date || undefined,
+        edd: form.edd || undefined,
+      });
+      await loadData();
+      setEditModal(false);
+    } catch {}
+    finally { setSaving(false); }
   };
 
   const infoRow = (label: string, value: string) => (
@@ -180,13 +233,19 @@ function GeralTab({ patientId }: { patientId: string }) {
       <View style={[s.infoCard, { marginBottom: 12 }]}>
         <View style={s.infoCardHeader}>
           <Text style={s.infoCardTitle}>Prontuário</Text>
-          {patient?.prontuario && <Text style={s.infoKey}>{patient.prontuario}</Text>}
+          <TouchableOpacity onPress={() => setEditModal(true)}>
+            <Text style={{ fontSize: 12, fontWeight: '600', color: colors.primary }}>Editar</Text>
+          </TouchableOpacity>
         </View>
         {infoRow('Tipo sanguíneo', patient?.blood_type ?? '—')}
         {infoRow('DUM', prontuario?.lmp_date ? formatDate(prontuario.lmp_date) : '—')}
         {infoRow('DPP', prontuario?.edd ? formatDate(prontuario.edd) : '—')}
+        {infoRow('Paridade', (patient as any)?.parity ?? '—')}
         {infoRow('Altura', prontuario?.height_cm ? `${prontuario.height_cm} cm` : '—')}
         {infoRow('Peso inicial', prontuario?.weight_initial_kg ? `${prontuario.weight_initial_kg} kg` : '—')}
+        {infoRow('Hospital', (patient as any)?.hospital ?? '—')}
+        {infoRow('Acompanhante', (patient as any)?.acompanhante ?? '—')}
+        {infoRow('Risco', (patient as any)?.risk_level ?? '—')}
       </View>
 
       <View style={[s.infoCard, { marginBottom: 12 }]}>
@@ -196,6 +255,20 @@ function GeralTab({ patientId }: { patientId: string }) {
         {infoRow('E-mail', patient?.email ?? '—')}
         {infoRow('Telefone', patient?.phone ?? '—')}
       </View>
+
+      <TouchableOpacity
+        style={[s.infoCard, { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12 }]}
+        onPress={() => navigation.navigate('PatientCard', { patientId, patientName: patient?.name ?? 'Paciente' })}
+        activeOpacity={0.8}
+      >
+        <View>
+          <Text style={s.infoCardTitle}>📋 Cartão da Gestante</Text>
+          <Text style={{ fontSize: 12, color: colors.textMid, marginTop: 2 }}>
+            Ver e preencher o cartão completo
+          </Text>
+        </View>
+        <Text style={{ fontSize: 18, color: colors.primary }}>→</Text>
+      </TouchableOpacity>
 
       <View style={s.notasCard}>
         <Text style={s.notasTitle}>🔒 Notas da Médica — Conteúdo privado</Text>
@@ -208,6 +281,208 @@ function GeralTab({ patientId }: { patientId: string }) {
           placeholderTextColor={colors.textInactive}
         />
       </View>
+
+      <Sheet visible={editModal} onClose={() => setEditModal(false)} title="Editar Prontuário">
+        <Row>
+          <View style={{ flex: 1 }}>
+            <Field label="Altura (cm)" value={form.height_cm}
+              onChange={(v) => setForm((f) => ({ ...f, height_cm: v }))} placeholder="165" />
+          </View>
+          <View style={{ flex: 1 }}>
+            <Field label="Peso inicial (kg)" value={form.weight_initial_kg}
+              onChange={(v) => setForm((f) => ({ ...f, weight_initial_kg: v }))} placeholder="62.5" />
+          </View>
+        </Row>
+        <Row>
+          <View style={{ flex: 1 }}>
+            <Field label="Tipo sanguíneo" value={form.blood_type}
+              onChange={(v) => setForm((f) => ({ ...f, blood_type: v }))} placeholder="O+" />
+          </View>
+          <View style={{ flex: 1 }}>
+            <Field label="Paridade (G/P/A)" value={form.parity}
+              onChange={(v) => setForm((f) => ({ ...f, parity: v }))} placeholder="G1P0A0" />
+          </View>
+        </Row>
+        <Row>
+          <View style={{ flex: 1 }}>
+            <Field label="DUM (AAAA-MM-DD)" value={form.lmp_date}
+              onChange={(v) => setForm((f) => ({ ...f, lmp_date: v }))} placeholder="2023-11-01" />
+          </View>
+          <View style={{ flex: 1 }}>
+            <Field label="DPP (AAAA-MM-DD)" value={form.edd}
+              onChange={(v) => setForm((f) => ({ ...f, edd: v }))} placeholder="2024-08-07" />
+          </View>
+        </Row>
+        <Field label="Acompanhante" value={form.acompanhante}
+          onChange={(v) => setForm((f) => ({ ...f, acompanhante: v }))} placeholder="Nome do acompanhante" />
+        <Field label="Hospital/Maternidade" value={form.hospital}
+          onChange={(v) => setForm((f) => ({ ...f, hospital: v }))} placeholder="Hospital Santa Joana" />
+        <Text style={s.fieldLabel}>Risco Gestacional</Text>
+        <View style={{ flexDirection: 'row', gap: 8, marginBottom: 16 }}>
+          {(['low', 'medium', 'high'] as RiskLevel[]).map((r) => (
+            <TouchableOpacity
+              key={r}
+              style={[s.chip2, form.risk_level === r && s.chip2Active]}
+              onPress={() => setForm((f) => ({ ...f, risk_level: r }))}
+            >
+              <Text style={[s.chip2Text, form.risk_level === r && s.chip2TextActive]}>
+                {r === 'low' ? 'Baixo' : r === 'medium' ? 'Médio' : 'Alto'}
+              </Text>
+            </TouchableOpacity>
+          ))}
+        </View>
+        <TouchableOpacity style={[s.saveBtn, saving && { opacity: 0.6 }]} onPress={salvarEdicao} disabled={saving}>
+          <Text style={s.saveBtnText}>{saving ? 'Salvando...' : 'Salvar'}</Text>
+        </TouchableOpacity>
+      </Sheet>
+    </ScrollView>
+  );
+}
+
+// ── ANAMNESE TAB ──────────────────────────────────────────────────────────────
+
+const DOENCAS: { key: keyof AnamneseCreate; label: string }[] = [
+  { key: 'has_diabetes', label: 'Diabetes' },
+  { key: 'has_hipertensao', label: 'Hipertensão' },
+  { key: 'has_cardiopatia', label: 'Cardiopatia' },
+  { key: 'has_epilepsia', label: 'Epilepsia' },
+  { key: 'has_tireoide', label: 'Doença da tireoide' },
+  { key: 'has_doenca_renal', label: 'Doença renal' },
+  { key: 'has_autoimune', label: 'Doença autoimune' },
+];
+
+const FAMILIARES: { key: keyof AnamneseCreate; label: string }[] = [
+  { key: 'familiar_diabetes', label: 'Diabetes' },
+  { key: 'familiar_hipertensao', label: 'Hipertensão' },
+  { key: 'familiar_gemelaridade', label: 'Gemelaridade' },
+  { key: 'familiar_malformacoes', label: 'Malformações congênitas' },
+];
+
+function CheckRow({ label, value, onChange }: { label: string; value: boolean; onChange: (v: boolean) => void }) {
+  return (
+    <TouchableOpacity
+      style={{ flexDirection: 'row', alignItems: 'center', paddingVertical: 10, borderBottomWidth: 1, borderBottomColor: 'rgba(0,0,0,0.05)' }}
+      onPress={() => onChange(!value)}
+      activeOpacity={0.7}
+    >
+      <View style={{
+        width: 22, height: 22, borderRadius: 6, borderWidth: 2,
+        borderColor: value ? colors.primary : colors.textInactive,
+        backgroundColor: value ? colors.primary : 'transparent',
+        marginRight: 12, alignItems: 'center', justifyContent: 'center',
+      }}>
+        {value && <Text style={{ color: colors.white, fontSize: 13, fontWeight: '700' }}>✓</Text>}
+      </View>
+      <Text style={{ fontSize: 14, color: colors.text, flex: 1 }}>{label}</Text>
+    </TouchableOpacity>
+  );
+}
+
+function AnaSection({ title }: { title: string }) {
+  return <Text style={{ fontSize: 13, fontWeight: '700', color: colors.primary, textTransform: 'uppercase', letterSpacing: 0.6, marginTop: 20, marginBottom: 8 }}>{title}</Text>;
+}
+
+function AnamneseTab({ patientId }: { patientId: string }) {
+  const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
+  const [form, setForm] = useState<AnamneseCreate>({
+    has_diabetes: false, has_hipertensao: false, has_cardiopatia: false,
+    has_epilepsia: false, has_tireoide: false, has_doenca_renal: false,
+    has_autoimune: false, outras_doencas: '',
+    alergias_medicamentos: '', outras_alergias: '',
+    familiar_diabetes: false, familiar_hipertensao: false,
+    familiar_gemelaridade: false, familiar_malformacoes: false, outros_familiares: '',
+    tabagismo: false, tabagismo_cigarros_dia: undefined,
+    alcool: false, alcool_frequencia: undefined,
+    drogas_ilicitas: false,
+    atividade_fisica: false, atividade_fisica_descricao: '',
+    pre_eclampsia_anterior: false,
+    diabetes_gestacional_anterior: false,
+    perda_fetal_anterior: false,
+  });
+
+  const setField = <K extends keyof AnamneseCreate>(key: K, value: AnamneseCreate[K]) =>
+    setForm((f) => ({ ...f, [key]: value }));
+
+  useEffect(() => {
+    patientsService.getAnamnesis(patientId)
+      .then((a) => setForm(a as AnamneseCreate))
+      .catch(() => {})
+      .finally(() => setLoading(false));
+  }, [patientId]);
+
+  const salvar = async () => {
+    setSaving(true);
+    try { await patientsService.saveAnamnesis(patientId, form); }
+    catch {}
+    finally { setSaving(false); }
+  };
+
+  if (loading) return <View style={s.center}><ActivityIndicator size="large" color={colors.primary} /></View>;
+
+  return (
+    <ScrollView contentContainerStyle={{ padding: spacing.lg, paddingBottom: 40 }}>
+      <AnaSection title="Doenças pré-existentes" />
+      {DOENCAS.map((d) => (
+        <CheckRow key={d.key} label={d.label} value={!!(form[d.key])} onChange={(v) => setField(d.key, v)} />
+      ))}
+      <Field label="Outras doenças" value={form.outras_doencas ?? ''}
+        onChange={(v) => setField('outras_doencas', v)} multiline placeholder="Descreva outras condições..." />
+
+      <AnaSection title="Alergias" />
+      <Field label="Alergias a medicamentos" value={form.alergias_medicamentos ?? ''}
+        onChange={(v) => setField('alergias_medicamentos', v)} placeholder="ex: Penicilina, AAS" />
+      <Field label="Outras alergias" value={form.outras_alergias ?? ''}
+        onChange={(v) => setField('outras_alergias', v)} placeholder="ex: Látex, frutos do mar" />
+
+      <AnaSection title="Antecedentes familiares" />
+      {FAMILIARES.map((d) => (
+        <CheckRow key={d.key} label={d.label} value={!!(form[d.key])} onChange={(v) => setField(d.key, v)} />
+      ))}
+      <Field label="Outros antecedentes familiares" value={form.outros_familiares ?? ''}
+        onChange={(v) => setField('outros_familiares', v)} multiline placeholder="Descreva..." />
+
+      <AnaSection title="Hábitos de vida" />
+      <CheckRow label="Tabagismo" value={!!form.tabagismo} onChange={(v) => setField('tabagismo', v)} />
+      {form.tabagismo && (
+        <Field label="Cigarros por dia" value={form.tabagismo_cigarros_dia ? String(form.tabagismo_cigarros_dia) : ''}
+          onChange={(v) => setField('tabagismo_cigarros_dia', v ? parseInt(v) : undefined)} placeholder="ex: 10" />
+      )}
+      <CheckRow label="Consumo de álcool" value={!!form.alcool} onChange={(v) => setField('alcool', v)} />
+      {form.alcool && (
+        <>
+          <Text style={s.fieldLabel}>Frequência</Text>
+          <View style={{ flexDirection: 'row', gap: 8, marginBottom: 16 }}>
+            {(['social', 'semanal', 'diario'] as AlcoolFrequencia[]).map((f) => (
+              <TouchableOpacity key={f} style={[s.chip2, form.alcool_frequencia === f && s.chip2Active]}
+                onPress={() => setField('alcool_frequencia', f)}>
+                <Text style={[s.chip2Text, form.alcool_frequencia === f && s.chip2TextActive]}>
+                  {f === 'social' ? 'Social' : f === 'semanal' ? 'Semanal' : 'Diário'}
+                </Text>
+              </TouchableOpacity>
+            ))}
+          </View>
+        </>
+      )}
+      <CheckRow label="Uso de drogas ilícitas" value={!!form.drogas_ilicitas} onChange={(v) => setField('drogas_ilicitas', v)} />
+      <CheckRow label="Atividade física" value={!!form.atividade_fisica} onChange={(v) => setField('atividade_fisica', v)} />
+      {form.atividade_fisica && (
+        <Field label="Tipo e frequência" value={form.atividade_fisica_descricao ?? ''}
+          onChange={(v) => setField('atividade_fisica_descricao', v)} placeholder="ex: Caminhada 3x por semana" />
+      )}
+
+      <AnaSection title="Antecedentes obstétricos" />
+      <CheckRow label="Pré-eclâmpsia em gestação anterior" value={!!form.pre_eclampsia_anterior}
+        onChange={(v) => setField('pre_eclampsia_anterior', v)} />
+      <CheckRow label="Diabetes gestacional anterior" value={!!form.diabetes_gestacional_anterior}
+        onChange={(v) => setField('diabetes_gestacional_anterior', v)} />
+      <CheckRow label="Perda fetal anterior (aborto/óbito)" value={!!form.perda_fetal_anterior}
+        onChange={(v) => setField('perda_fetal_anterior', v)} />
+
+      <TouchableOpacity style={[s.saveBtn, { marginTop: 24 }, saving && { opacity: 0.6 }]}
+        onPress={salvar} disabled={saving}>
+        <Text style={s.saveBtnText}>{saving ? 'Salvando...' : 'Salvar Anamnese'}</Text>
+      </TouchableOpacity>
     </ScrollView>
   );
 }
@@ -329,6 +604,19 @@ function SinaisTab({ patientId }: { patientId: string }) {
 function ConsultasTab({ patientId }: { patientId: string }) {
   const [consultas, setConsultas] = useState<Appointment[]>([]);
   const [loading, setLoading] = useState(true);
+  const [selectedAppt, setSelectedAppt] = useState<Appointment | null>(null);
+  const [evoLoading, setEvoLoading] = useState(false);
+  const [evoSaving, setEvoSaving] = useState(false);
+  const [evoForm, setEvoForm] = useState<{
+    weight_kg: string; fundal_height_cm: string; fetal_heart_rate: string;
+    presentation: '' | 'cephalic' | 'breech' | 'transverse';
+    fetal_movements: boolean; edema: EdemaGrade;
+    bp_systolic: string; bp_diastolic: string; clinical_notes: string;
+  }>({
+    weight_kg: '', fundal_height_cm: '', fetal_heart_rate: '',
+    presentation: '', fetal_movements: true, edema: 'none',
+    bp_systolic: '', bp_diastolic: '', clinical_notes: '',
+  });
 
   useEffect(() => {
     appointmentsService
@@ -337,6 +625,51 @@ function ConsultasTab({ patientId }: { patientId: string }) {
       .catch(() => {})
       .finally(() => setLoading(false));
   }, [patientId]);
+
+  const openEvolution = async (appt: Appointment) => {
+    setSelectedAppt(appt);
+    setEvoLoading(true);
+    try {
+      const evo = await appointmentsService.getEvolution(appt.id);
+      setEvoForm({
+        weight_kg: evo.weight_kg ? String(evo.weight_kg) : '',
+        fundal_height_cm: evo.fundal_height_cm ? String(evo.fundal_height_cm) : '',
+        fetal_heart_rate: evo.fetal_heart_rate ? String(evo.fetal_heart_rate) : '',
+        presentation: (evo.presentation as any) ?? '',
+        fetal_movements: evo.fetal_movements ?? true,
+        edema: (evo.edema as EdemaGrade) ?? 'none',
+        bp_systolic: evo.bp_systolic ? String(evo.bp_systolic) : '',
+        bp_diastolic: evo.bp_diastolic ? String(evo.bp_diastolic) : '',
+        clinical_notes: evo.clinical_notes ?? '',
+      });
+    } catch {
+      setEvoForm({
+        weight_kg: '', fundal_height_cm: '', fetal_heart_rate: '',
+        presentation: '', fetal_movements: true, edema: 'none',
+        bp_systolic: '', bp_diastolic: '', clinical_notes: '',
+      });
+    } finally { setEvoLoading(false); }
+  };
+
+  const salvarEvo = async () => {
+    if (!selectedAppt) return;
+    setEvoSaving(true);
+    try {
+      await appointmentsService.saveEvolution(selectedAppt.id, {
+        weight_kg: evoForm.weight_kg ? parseFloat(evoForm.weight_kg) : undefined,
+        fundal_height_cm: evoForm.fundal_height_cm ? parseFloat(evoForm.fundal_height_cm) : undefined,
+        fetal_heart_rate: evoForm.fetal_heart_rate ? parseInt(evoForm.fetal_heart_rate) : undefined,
+        presentation: evoForm.presentation || undefined,
+        fetal_movements: evoForm.fetal_movements,
+        edema: evoForm.edema,
+        bp_systolic: evoForm.bp_systolic ? parseInt(evoForm.bp_systolic) : undefined,
+        bp_diastolic: evoForm.bp_diastolic ? parseInt(evoForm.bp_diastolic) : undefined,
+        clinical_notes: evoForm.clinical_notes || undefined,
+      });
+      setSelectedAppt(null);
+    } catch {}
+    finally { setEvoSaving(false); }
+  };
 
   if (loading) {
     return <View style={s.center}><ActivityIndicator size="large" color={colors.primary} /></View>;
@@ -347,23 +680,106 @@ function ConsultasTab({ patientId }: { patientId: string }) {
       <Text style={[s.addRowLabel, { marginBottom: 12 }]}>{consultas.length} consulta{consultas.length !== 1 ? 's' : ''}</Text>
       {consultas.length === 0 && <Text style={s.emptyText}>Nenhuma consulta registrada.</Text>}
       {consultas.map((c) => (
-        <ExpandCard key={c.id} header={
-          <>
-            <Text style={s.expandDate}>{formatDate(c.date)}</Text>
-            <Text style={s.expandMeta}>{c.type} · {c.time?.slice(0, 5) ?? '—'}</Text>
-          </>
-        }>
-          <View style={s.expandGrid}>
-            {[['Tipo', c.type], ['Status', c.status], ['Local', c.location ?? '—']].map(([k, v]) => (
-              <View key={k} style={s.expandField}>
-                <Text style={s.expandKey}>{k}</Text>
-                <Text style={s.expandVal}>{v}</Text>
-              </View>
-            ))}
-          </View>
-          {c.notes ? <Text style={s.expandObs}>{c.notes}</Text> : null}
-        </ExpandCard>
+        <TouchableOpacity key={c.id} onPress={() => openEvolution(c)} activeOpacity={0.85}>
+          <ExpandCard header={
+            <>
+              <Text style={s.expandDate}>{formatDate(c.date)}</Text>
+              <Text style={s.expandMeta}>{c.type} · {c.time?.slice(0, 5) ?? '—'}</Text>
+            </>
+          }>
+            <View style={s.expandGrid}>
+              {[['Tipo', c.type], ['Status', c.status], ['Local', c.location ?? '—']].map(([k, v]) => (
+                <View key={k} style={s.expandField}>
+                  <Text style={s.expandKey}>{k}</Text>
+                  <Text style={s.expandVal}>{v}</Text>
+                </View>
+              ))}
+            </View>
+            {c.notes ? <Text style={s.expandObs}>{c.notes}</Text> : null}
+            <Text style={{ fontSize: 11, color: colors.primary, marginTop: 8, fontWeight: '600' }}>
+              Toque para registrar evolução →
+            </Text>
+          </ExpandCard>
+        </TouchableOpacity>
       ))}
+
+      <Sheet
+        visible={!!selectedAppt}
+        onClose={() => setSelectedAppt(null)}
+        title={`Evolução — ${selectedAppt?.date ? formatDate(selectedAppt.date) : ''}`}
+      >
+        {evoLoading ? (
+          <ActivityIndicator color={colors.primary} style={{ marginVertical: 24 }} />
+        ) : (
+          <>
+            <Row>
+              <View style={{ flex: 1 }}>
+                <Field label="Peso (kg)" value={evoForm.weight_kg}
+                  onChange={(v) => setEvoForm((f) => ({ ...f, weight_kg: v }))} placeholder="63.5" />
+              </View>
+              <View style={{ flex: 1 }}>
+                <Field label="AU (cm)" value={evoForm.fundal_height_cm}
+                  onChange={(v) => setEvoForm((f) => ({ ...f, fundal_height_cm: v }))} placeholder="28.0" />
+              </View>
+            </Row>
+            <Row>
+              <View style={{ flex: 1 }}>
+                <Field label="BCF (bpm)" value={evoForm.fetal_heart_rate}
+                  onChange={(v) => setEvoForm((f) => ({ ...f, fetal_heart_rate: v }))} placeholder="148" />
+              </View>
+              <View style={{ flex: 1 }}>
+                <Field label="PA sistólica" value={evoForm.bp_systolic}
+                  onChange={(v) => setEvoForm((f) => ({ ...f, bp_systolic: v }))} placeholder="110" />
+              </View>
+              <View style={{ flex: 1 }}>
+                <Field label="PA diastólica" value={evoForm.bp_diastolic}
+                  onChange={(v) => setEvoForm((f) => ({ ...f, bp_diastolic: v }))} placeholder="70" />
+              </View>
+            </Row>
+            <Text style={s.fieldLabel}>Apresentação fetal</Text>
+            <View style={{ flexDirection: 'row', gap: 8, marginBottom: 16 }}>
+              {([['', 'N/A'], ['cephalic', 'Cefálica'], ['breech', 'Pélvica'], ['transverse', 'Transversa']] as const).map(([val, label]) => (
+                <TouchableOpacity key={val}
+                  style={[s.chip2, evoForm.presentation === val && s.chip2Active]}
+                  onPress={() => setEvoForm((f) => ({ ...f, presentation: val }))}
+                >
+                  <Text style={[s.chip2Text, evoForm.presentation === val && s.chip2TextActive]}>{label}</Text>
+                </TouchableOpacity>
+              ))}
+            </View>
+            <Text style={s.fieldLabel}>Edema</Text>
+            <View style={{ flexDirection: 'row', gap: 8, marginBottom: 16 }}>
+              {(['none', '+', '++', '+++'] as EdemaGrade[]).map((g) => (
+                <TouchableOpacity key={g}
+                  style={[s.chip2, evoForm.edema === g && s.chip2Active]}
+                  onPress={() => setEvoForm((f) => ({ ...f, edema: g }))}
+                >
+                  <Text style={[s.chip2Text, evoForm.edema === g && s.chip2TextActive]}>{g === 'none' ? 'Sem' : g}</Text>
+                </TouchableOpacity>
+              ))}
+            </View>
+            <Text style={s.fieldLabel}>Movimentos fetais</Text>
+            <View style={{ flexDirection: 'row', gap: 8, marginBottom: 16 }}>
+              {([true, false] as const).map((v) => (
+                <TouchableOpacity key={String(v)}
+                  style={[s.chip2, evoForm.fetal_movements === v && s.chip2Active]}
+                  onPress={() => setEvoForm((f) => ({ ...f, fetal_movements: v }))}
+                >
+                  <Text style={[s.chip2Text, evoForm.fetal_movements === v && s.chip2TextActive]}>
+                    {v ? 'Presentes' : 'Ausentes'}
+                  </Text>
+                </TouchableOpacity>
+              ))}
+            </View>
+            <Field label="Notas clínicas" value={evoForm.clinical_notes}
+              onChange={(v) => setEvoForm((f) => ({ ...f, clinical_notes: v }))}
+              multiline placeholder="Evolução sem intercorrências..." />
+            <TouchableOpacity style={[s.saveBtn, evoSaving && { opacity: 0.6 }]} onPress={salvarEvo} disabled={evoSaving}>
+              <Text style={s.saveBtnText}>{evoSaving ? 'Salvando...' : 'Salvar Evolução'}</Text>
+            </TouchableOpacity>
+          </>
+        )}
+      </Sheet>
     </ScrollView>
   );
 }
@@ -460,6 +876,10 @@ function ExamesTab({ patientId }: { patientId: string }) {
   const [list, setList] = useState<LabTest[]>([]);
   const [loading, setLoading] = useState(true);
   const [modal, setModal] = useState(false);
+  const [solicitarModal, setSolicitarModal] = useState(false);
+  const [selectedPresets, setSelectedPresets] = useState<Record<string, boolean>>({});
+  const [presetTrimestre, setPresetTrimestre] = useState<1 | 2 | 3>(1);
+  const [solicitando, setSolicitando] = useState(false);
   const [nome, setNome] = useState('');
   const [tipo, setTipo] = useState('');
   const [data, setData] = useState('');
@@ -471,6 +891,30 @@ function ExamesTab({ patientId }: { patientId: string }) {
       .catch(() => {})
       .finally(() => setLoading(false));
   }, [patientId]);
+
+  const solicitarLote = async () => {
+    const presets = presetTrimestre === 1
+      ? EXAMES_PRIMEIRO_TRIMESTRE
+      : presetTrimestre === 2
+      ? EXAMES_SEGUNDO_TRIMESTRE
+      : EXAMES_TERCEIRO_TRIMESTRE;
+    const selecionados = presets.filter((p) => selectedPresets[p.name]);
+    if (selecionados.length === 0) return;
+    setSolicitando(true);
+    try {
+      const today = new Date().toISOString().split('T')[0];
+      await Promise.all(
+        selecionados.map((p) =>
+          examsService.createLabTest(patientId, { name: p.name, type: p.type, date: today, status: 'pending' })
+        )
+      );
+      const r = await examsService.listLabTests(patientId, { limit: 20 });
+      setList(r.data);
+      setSolicitarModal(false);
+      setSelectedPresets({});
+    } catch {}
+    finally { setSolicitando(false); }
+  };
 
   const salvar = async () => {
     if (!nome || !data) return;
@@ -496,9 +940,15 @@ function ExamesTab({ patientId }: { patientId: string }) {
     <ScrollView contentContainerStyle={{ padding: spacing.lg, paddingBottom: 40 }}>
       <View style={s.addRow}>
         <Text style={s.addRowLabel}>{list.length} exame{list.length !== 1 ? 's' : ''}</Text>
-        <TouchableOpacity style={s.addBtn} onPress={() => setModal(true)}>
-          <Text style={s.addBtnText}>+ Nova Coleta</Text>
-        </TouchableOpacity>
+        <View style={{ flexDirection: 'row', gap: 8 }}>
+          <TouchableOpacity style={[s.addBtn, { backgroundColor: colors.primaryLight }]}
+            onPress={() => setSolicitarModal(true)}>
+            <Text style={[s.addBtnText, { color: colors.primaryDk }]}>Solicitar</Text>
+          </TouchableOpacity>
+          <TouchableOpacity style={s.addBtn} onPress={() => setModal(true)}>
+            <Text style={s.addBtnText}>+ Manual</Text>
+          </TouchableOpacity>
+        </View>
       </View>
       {list.length === 0 && <Text style={s.emptyText}>Nenhum exame laboratorial registrado.</Text>}
       {list.map((e) => (
@@ -532,6 +982,49 @@ function ExamesTab({ patientId }: { patientId: string }) {
         </Row>
         <Field label="Resultado" value={resultado} onChange={setResultado} multiline />
         <TouchableOpacity style={s.saveBtn} onPress={salvar}><Text style={s.saveBtnText}>Salvar</Text></TouchableOpacity>
+      </Sheet>
+
+      <Sheet visible={solicitarModal} onClose={() => setSolicitarModal(false)} title="Solicitar Exames">
+        <Text style={s.fieldLabel}>Trimestre</Text>
+        <View style={{ flexDirection: 'row', gap: 8, marginBottom: 16 }}>
+          {([1, 2, 3] as const).map((t) => (
+            <TouchableOpacity key={t}
+              style={[s.chip2, presetTrimestre === t && s.chip2Active]}
+              onPress={() => { setPresetTrimestre(t); setSelectedPresets({}); }}>
+              <Text style={[s.chip2Text, presetTrimestre === t && s.chip2TextActive]}>{t}º Tri</Text>
+            </TouchableOpacity>
+          ))}
+        </View>
+        {(presetTrimestre === 1
+          ? EXAMES_PRIMEIRO_TRIMESTRE
+          : presetTrimestre === 2
+          ? EXAMES_SEGUNDO_TRIMESTRE
+          : EXAMES_TERCEIRO_TRIMESTRE
+        ).map((p) => (
+          <TouchableOpacity key={p.name}
+            style={{ flexDirection: 'row', alignItems: 'center', paddingVertical: 10, borderBottomWidth: 1, borderBottomColor: 'rgba(0,0,0,0.05)' }}
+            onPress={() => setSelectedPresets((prev) => ({ ...prev, [p.name]: !prev[p.name] }))}
+            activeOpacity={0.7}
+          >
+            <View style={{
+              width: 22, height: 22, borderRadius: 6, borderWidth: 2,
+              borderColor: selectedPresets[p.name] ? colors.primary : colors.textInactive,
+              backgroundColor: selectedPresets[p.name] ? colors.primary : 'transparent',
+              marginRight: 12, alignItems: 'center', justifyContent: 'center',
+            }}>
+              {selectedPresets[p.name] && <Text style={{ color: colors.white, fontSize: 13, fontWeight: '700' }}>✓</Text>}
+            </View>
+            <Text style={{ fontSize: 14, color: colors.text, flex: 1 }}>{p.name}</Text>
+          </TouchableOpacity>
+        ))}
+        <TouchableOpacity
+          style={[s.saveBtn, { marginTop: 16 }, solicitando && { opacity: 0.6 }]}
+          onPress={solicitarLote} disabled={solicitando}
+        >
+          <Text style={s.saveBtnText}>
+            {solicitando ? 'Solicitando...' : `Solicitar ${Object.values(selectedPresets).filter(Boolean).length} exame(s)`}
+          </Text>
+        </TouchableOpacity>
       </Sheet>
     </ScrollView>
   );
@@ -632,6 +1125,109 @@ function VacinasTab({ patientId }: { patientId: string }) {
   );
 }
 
+// ── MEDICAMENTOS TAB ──────────────────────────────────────────────────────────
+
+function MedicamentosTab({ patientId }: { patientId: string }) {
+  const [list, setList] = useState<Medication[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [modal, setModal] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [form, setForm] = useState<MedicationCreate>({
+    name: '', dosage: '', frequency: '',
+    start_date: new Date().toISOString().split('T')[0],
+  });
+
+  useEffect(() => {
+    medicationsService.list(patientId, { limit: 20 })
+      .then((r) => setList(r.data))
+      .catch(() => {})
+      .finally(() => setLoading(false));
+  }, [patientId]);
+
+  const salvar = async () => {
+    if (!form.name || !form.dosage || !form.frequency || !form.start_date) return;
+    setSaving(true);
+    try {
+      const novo = await medicationsService.create(patientId, form);
+      setList((prev) => [novo, ...prev]);
+      setModal(false);
+      setForm({ name: '', dosage: '', frequency: '', start_date: new Date().toISOString().split('T')[0] });
+    } catch {}
+    finally { setSaving(false); }
+  };
+
+  const toggleAtivo = async (med: Medication) => {
+    try {
+      const updated = await medicationsService.update(med.id, { active: !med.active });
+      setList((prev) => prev.map((m) => m.id === med.id ? updated : m));
+    } catch {}
+  };
+
+  if (loading) return <View style={s.center}><ActivityIndicator size="large" color={colors.primary} /></View>;
+
+  return (
+    <ScrollView contentContainerStyle={{ padding: spacing.lg, paddingBottom: 40 }}>
+      <View style={s.addRow}>
+        <Text style={s.addRowLabel}>{list.length} medicamento{list.length !== 1 ? 's' : ''}</Text>
+        <TouchableOpacity style={s.addBtn} onPress={() => setModal(true)}>
+          <Text style={s.addBtnText}>+ Prescrever</Text>
+        </TouchableOpacity>
+      </View>
+      {list.length === 0 && <Text style={s.emptyText}>Nenhum medicamento prescrito.</Text>}
+      {list.map((m) => (
+        <View key={m.id} style={[s.dataRow, { opacity: m.active ? 1 : 0.5 }]}>
+          <View style={{ flex: 1 }}>
+            <Text style={s.dataVal}>{m.name}</Text>
+            <Text style={s.dataSub}>{m.dosage} · {m.frequency}</Text>
+            {m.instructions ? <Text style={s.dataSub}>{m.instructions}</Text> : null}
+            <Text style={s.dataSub}>
+              Início: {formatDate(m.start_date)}{m.end_date ? ` · Fim: ${formatDate(m.end_date)}` : ' · Uso contínuo'}
+            </Text>
+          </View>
+          <TouchableOpacity
+            style={[s.badge, { backgroundColor: m.active ? 'rgba(141,170,145,0.15)' : 'rgba(0,0,0,0.06)' }]}
+            onPress={() => toggleAtivo(m)}
+          >
+            <Text style={[s.badgeText, { color: m.active ? colors.primaryDk : colors.textInactive }]}>
+              {m.active ? 'Ativo' : 'Inativo'}
+            </Text>
+          </TouchableOpacity>
+        </View>
+      ))}
+      <Sheet visible={modal} onClose={() => setModal(false)} title="Prescrever Medicamento">
+        <Field label="Medicamento" value={form.name}
+          onChange={(v) => setForm((f: MedicationCreate) => ({ ...f, name: v }))} placeholder="ex: Ácido fólico 5mg" />
+        <Row>
+          <View style={{ flex: 1 }}>
+            <Field label="Dosagem" value={form.dosage}
+              onChange={(v) => setForm((f: MedicationCreate) => ({ ...f, dosage: v }))} placeholder="ex: 5mg" />
+          </View>
+          <View style={{ flex: 1 }}>
+            <Field label="Frequência" value={form.frequency}
+              onChange={(v) => setForm((f: MedicationCreate) => ({ ...f, frequency: v }))} placeholder="ex: 1x ao dia" />
+          </View>
+        </Row>
+        <Row>
+          <View style={{ flex: 1 }}>
+            <Field label="Início (AAAA-MM-DD)" value={form.start_date}
+              onChange={(v) => setForm((f: MedicationCreate) => ({ ...f, start_date: v }))} placeholder="2026-05-29" />
+          </View>
+          <View style={{ flex: 1 }}>
+            <Field label="Fim (vazio = contínuo)" value={form.end_date ?? ''}
+              onChange={(v) => setForm((f: MedicationCreate) => ({ ...f, end_date: v || undefined }))} placeholder="opcional" />
+          </View>
+        </Row>
+        <Field label="Instruções" value={form.instructions ?? ''}
+          onChange={(v) => setForm((f: MedicationCreate) => ({ ...f, instructions: v }))}
+          multiline placeholder="ex: Tomar em jejum, longe do ferro" />
+        <TouchableOpacity style={[s.saveBtn, saving && { opacity: 0.6 }]} onPress={salvar} disabled={saving}>
+          <Text style={s.saveBtnText}>{saving ? 'Salvando...' : 'Prescrever'}</Text>
+        </TouchableOpacity>
+      </Sheet>
+    </ScrollView>
+  );
+}
+
 // ── MAIN SCREEN ───────────────────────────────────────────────────────────────
 
 export function PacienteDetalheScreen() {
@@ -649,12 +1245,14 @@ export function PacienteDetalheScreen() {
 
   const renderTab = () => {
     switch (tab) {
-      case 'geral': return <GeralTab patientId={patientId} />;
-      case 'sinais': return <SinaisTab patientId={patientId} />;
+      case 'geral':     return <GeralTab patientId={patientId} />;
+      case 'anamnese':  return <AnamneseTab patientId={patientId} />;
+      case 'sinais':    return <SinaisTab patientId={patientId} />;
       case 'consultas': return <ConsultasTab patientId={patientId} />;
-      case 'usg': return <USGTab patientId={patientId} />;
-      case 'exames': return <ExamesTab patientId={patientId} />;
-      case 'vacinas': return <VacinasTab patientId={patientId} />;
+      case 'usg':       return <USGTab patientId={patientId} />;
+      case 'exames':    return <ExamesTab patientId={patientId} />;
+      case 'vacinas':   return <VacinasTab patientId={patientId} />;
+      case 'meds':      return <MedicamentosTab patientId={patientId} />;
     }
   };
 
