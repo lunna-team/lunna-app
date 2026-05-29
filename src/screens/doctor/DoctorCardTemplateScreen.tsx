@@ -39,9 +39,11 @@ export function DoctorCardTemplateScreen() {
 
   const load = useCallback(async () => {
     if (!user?.id) return;
-    const data = await cardService.getTemplate(user.id);
-    setSections(data);
-    setLoading(false);
+    try {
+      const data = await cardService.getTemplate(user.id);
+      setSections(data);
+    } catch {}
+    finally { setLoading(false); }
   }, [user?.id]);
 
   useEffect(() => { load(); }, [load]);
