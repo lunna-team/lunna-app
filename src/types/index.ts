@@ -333,3 +333,119 @@ export interface Notification {
   data: Record<string, unknown> | null;
   created_at: string;
 }
+
+// ─── Evolução por Consulta ────────────────────────────────────────────────────
+
+export type EdemaGrade = 'none' | '+' | '++' | '+++';
+
+export interface EvolutionCreate {
+  weight_kg?: number;
+  fundal_height_cm?: number;
+  fetal_heart_rate?: number;
+  presentation?: 'cephalic' | 'breech' | 'transverse';
+  fetal_movements?: boolean;
+  edema?: EdemaGrade;
+  bp_systolic?: number;
+  bp_diastolic?: number;
+  clinical_notes?: string;
+}
+
+export interface AppointmentEvolution extends EvolutionCreate {
+  id: string;
+  appointment_id: string;
+  patient_id: string;
+  created_at: string;
+  updated_at: string;
+}
+
+// ─── Anamnese ─────────────────────────────────────────────────────────────────
+
+export type AlcoolFrequencia = 'social' | 'semanal' | 'diario';
+
+export interface AnamneseCreate {
+  has_diabetes?: boolean;
+  has_hipertensao?: boolean;
+  has_cardiopatia?: boolean;
+  has_epilepsia?: boolean;
+  has_tireoide?: boolean;
+  has_doenca_renal?: boolean;
+  has_autoimune?: boolean;
+  outras_doencas?: string;
+  alergias_medicamentos?: string;
+  outras_alergias?: string;
+  familiar_diabetes?: boolean;
+  familiar_hipertensao?: boolean;
+  familiar_gemelaridade?: boolean;
+  familiar_malformacoes?: boolean;
+  outros_familiares?: string;
+  tabagismo?: boolean;
+  tabagismo_cigarros_dia?: number;
+  alcool?: boolean;
+  alcool_frequencia?: AlcoolFrequencia;
+  drogas_ilicitas?: boolean;
+  atividade_fisica?: boolean;
+  atividade_fisica_descricao?: string;
+  pre_eclampsia_anterior?: boolean;
+  diabetes_gestacional_anterior?: boolean;
+  perda_fetal_anterior?: boolean;
+}
+
+export interface PatientAnamnesis extends AnamneseCreate {
+  id: string;
+  patient_id: string;
+  created_at: string;
+  updated_at: string;
+}
+
+// ─── Cartão da Gestante ───────────────────────────────────────────────────────
+
+export interface CardFieldValue {
+  label: string;
+  value?: string;
+  position: number;
+}
+
+export interface CardSection {
+  id: string;
+  doctor_id: string;
+  title: string;
+  section_type: 'builtin' | 'text' | 'fields';
+  builtin_key?: string;
+  position: number;
+  visible: boolean;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface RenderedCardSection {
+  section_id: string;
+  title: string;
+  section_type: 'builtin' | 'text' | 'fields';
+  builtin_key?: string;
+  position: number;
+  visible: boolean;
+  content?: string;
+  fields?: CardFieldValue[];
+  builtin_data?: Record<string, any>;
+}
+
+export interface PatientCard {
+  patient_id: string;
+  doctor_id: string;
+  sections: RenderedCardSection[];
+}
+
+export interface CardSectionCreate {
+  title: string;
+  section_type: 'text' | 'fields';
+}
+
+export interface CardSectionUpdate {
+  title?: string;
+  visible?: boolean;
+}
+
+export interface CardEntryUpsert {
+  content?: string;
+  fields?: CardFieldValue[];
+}
