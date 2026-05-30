@@ -33,7 +33,7 @@ export function GlicoseScreen() {
   const insets = useSafeAreaInsets();
   const [readings, setReadings] = useState<GlucoseReading[]>([]);
   const [stats, setStats] = useState<{ total_readings: number; average: number } | null>(null);
-  const [loading, setLoading] = useState(true);
+  const [loading, setLoading] = useState(false);
   const [showModal, setShowModal] = useState(false);
   const [value, setValue] = useState('');
   const [moment, setMoment] = useState<GlucoseMoment>('fasting');
@@ -42,6 +42,7 @@ export function GlicoseScreen() {
 
   const load = useCallback(async () => {
     if (!user?.patient_id) return;
+    setLoading(true);
     try {
       const [listRes, statsRes] = await Promise.all([
         vitalsService.listGlucoseReadings(user.patient_id),

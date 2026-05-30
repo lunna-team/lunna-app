@@ -34,7 +34,7 @@ export function PressaoScreen() {
   const insets = useSafeAreaInsets();
   const [readings, setReadings] = useState<BloodPressureReading[]>([]);
   const [stats, setStats] = useState<{ total_readings: number; average_systolic: number; average_diastolic: number } | null>(null);
-  const [loading, setLoading] = useState(true);
+  const [loading, setLoading] = useState(false);
   const [showModal, setShowModal] = useState(false);
   const [systolic, setSystolic] = useState('');
   const [diastolic, setDiastolic] = useState('');
@@ -44,6 +44,7 @@ export function PressaoScreen() {
 
   const load = useCallback(async () => {
     if (!user?.patient_id) return;
+    setLoading(true);
     try {
       const [listRes, statsRes] = await Promise.all([
         vitalsService.listBloodPressureReadings(user.patient_id),

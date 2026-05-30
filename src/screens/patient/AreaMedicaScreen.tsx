@@ -73,12 +73,13 @@ export function AreaMedicaScreen() {
   const [medications, setMedications] = useState<Medication[]>([]);
   const [labTests, setLabTests] = useState<LabTest[]>([]);
   const [ultrasounds, setUltrasounds] = useState<Ultrasound[]>([]);
-  const [loading, setLoading] = useState(true);
+  const [loading, setLoading] = useState(false);
   const [doneIds, setDoneIds] = useState<Set<string>>(new Set());
   const insets = useSafeAreaInsets();
 
   useEffect(() => {
     if (!user?.patient_id) return;
+    setLoading(true);
     Promise.all([
       medicationsService.list(user.patient_id, { active: true, limit: 20 }),
       examsService.listLabTests(user.patient_id, { limit: 20 }),

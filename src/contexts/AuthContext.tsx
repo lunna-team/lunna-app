@@ -23,8 +23,14 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [isLoading, setIsLoading] = useState(true);
 
   useEffect(() => {
-    authService.getStoredUser().then((stored) => {
-      setUser(stored);
+    authService.getStoredUser().then(async (stored) => {
+      // Sessão antiga sem patient_id: limpa o storage e força novo login
+      if (stored?.role === 'patient' && !stored.patient_id) {
+        await authService.logout().catch(() => {});
+        setUser(null);
+      } else {
+        setUser(stored);
+      }
       setIsLoading(false);
     });
   }, []);

@@ -52,7 +52,7 @@ export function ConsultasScreen() {
   const { user } = useAuth();
   const insets = useSafeAreaInsets();
   const [appointments, setAppointments] = useState<Appointment[]>([]);
-  const [loading, setLoading] = useState(true);
+  const [loading, setLoading] = useState(false);
   const [selected, setSelected] = useState<Appointment | null>(null);
   const [showReschedule, setShowReschedule] = useState(false);
   const [rescheduleReason, setRescheduleReason] = useState('conflito_pessoal');
@@ -61,6 +61,7 @@ export function ConsultasScreen() {
 
   const load = useCallback(async () => {
     if (!user?.patient_id) return;
+    setLoading(true);
     try {
       const res = await appointmentsService.listPatientAppointments(user.patient_id, { limit: 20 });
       setAppointments(res.data);
