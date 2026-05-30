@@ -348,6 +348,14 @@ export interface EvolutionCreate {
   bp_systolic?: number;
   bp_diastolic?: number;
   clinical_notes?: string;
+
+  queixas?: string;
+  observacoes_medicas?: string;
+  pfe_gramas?: number;
+  pfe_percentil?: string;
+  doppler?: string;
+  observacoes_exame_fisico?: string;
+  conduta?: string;
 }
 
 export interface AppointmentEvolution extends EvolutionCreate {

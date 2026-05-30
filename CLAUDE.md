@@ -137,6 +137,8 @@ lunna-app/
 | Agenda | `doctor/AgendaMedicoScreen` |
 | Lista de Pacientes | `doctor/MedicoPacientesScreen` |
 | Detalhe do Paciente | `doctor/PacienteDetalheScreen` |
+| Cartão da Paciente | `doctor/PatientCardScreen` |
+| Template do Cartão | `doctor/DoctorCardTemplateScreen` |
 
 ## Telas — Secretária
 
@@ -225,6 +227,32 @@ PATCH /patients/vaccines/{vaccineId}   ← sem patientId na rota
 ```
 
 ---
+
+## Decisões de Produto
+
+### Cartão de Gestante — somente leitura no app
+O cartão da paciente (`PatientCardScreen`) é **read-only** no app mobile. As seções `text` e `fields` exibem o conteúdo mas não permitem edição. A configuração do template (`DoctorCardTemplateScreen`) exibe um aviso direcionando para o portal Lunna Web. Toda edição do cartão acontece exclusivamente no lunna-web.
+
+### Agenda — views disponíveis
+`AgendaMedicoScreen` tem 4 tabs: **Dia** (seta ← → dia a dia), **Semana** (strip semanal), **Mês** (calendário completo com dots coloridos por tipo de compromisso + lista do dia selecionado) e **Partos** (seletor de mês + lista filtrada por DPP).
+
+Cores dos tipos de compromisso:
+| Tipo | Cor |
+|---|---|
+| `routine` | verde (`colors.primary`) |
+| `follow_up` | coral (`#E5987D`) |
+| `ultrasound` | roxo (`#9B7FD4`) |
+| `lab` | azul (`#5B9BD5`) |
+| `emergency` | vermelho (`#E05C5C`) |
+
+### Formulário de Evolução — campos clínicos completos
+`PacienteDetalheScreen` > aba Consultas. Ao tocar numa consulta, abre o Sheet de evolução com:
+- Peso, AU, BCF, PA sistólica/diastólica, Apresentação fetal, Edema, Movimentos fetais
+- **Queixas** (novo), **PFE gramas + percentil** (novo), **Doppler** (novo, chips: Normal/Alterado/Não realizado)
+- **Obs. do Exame Físico** (novo), **Observações Médicas Confidenciais** (novo), **Conduta** (novo)
+
+### Roteamento por role — RootNavigator
+Cada role monta **apenas o seu screen** no Stack (sem `initialRouteName`). Isso evita que sessões anteriores causem redirect para o dashboard errado.
 
 ## Convenções
 

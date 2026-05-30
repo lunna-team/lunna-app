@@ -17,12 +17,6 @@ export type RootStackParams = {
 
 const Stack = createNativeStackNavigator<RootStackParams>();
 
-function getInitialRoute(role?: string): keyof RootStackParams {
-  if (role === 'doctor') return 'Doctor';
-  if (role === 'secretary') return 'Secretary';
-  if (role === 'patient') return 'Patient';
-  return 'Login';
-}
 
 export function RootNavigator() {
   const { isAuthenticated, isLoading, user } = useAuth();
@@ -43,14 +37,13 @@ export function RootNavigator() {
     );
   }
 
+  const role = user?.role;
+
   return (
-    <Stack.Navigator
-      screenOptions={{ headerShown: false }}
-      initialRouteName={getInitialRoute(user?.role)}
-    >
-      <Stack.Screen name="Patient" component={PatientNavigator} />
-      <Stack.Screen name="Doctor" component={DoctorNavigator} />
-      <Stack.Screen name="Secretary" component={SecretaryNavigator} />
+    <Stack.Navigator screenOptions={{ headerShown: false }}>
+      {role === 'patient' && <Stack.Screen name="Patient" component={PatientNavigator} />}
+      {role === 'doctor' && <Stack.Screen name="Doctor" component={DoctorNavigator} />}
+      {role === 'secretary' && <Stack.Screen name="Secretary" component={SecretaryNavigator} />}
     </Stack.Navigator>
   );
 }

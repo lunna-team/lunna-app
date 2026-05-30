@@ -1,19 +1,16 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import {
-  View, Text, StyleSheet, ScrollView, TouchableOpacity,
-  TextInput, ActivityIndicator,
+  View, Text, StyleSheet, ScrollView, ActivityIndicator,
 } from 'react-native';
 import { useRoute, RouteProp } from '@react-navigation/native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { ScreenHeader } from '../../components/common/ScreenHeader';
 import { cardService } from '../../services/card';
 import { colors, spacing, radius } from '../../theme';
-import type { PatientCard, RenderedCardSection, CardFieldValue } from '../../types';
+import type { PatientCard, RenderedCardSection } from '../../types';
 import type { DoctorStackParams } from '../../navigation/DoctorNavigator';
 
 type RouteType = RouteProp<DoctorStackParams, 'PatientCard'>;
-
-// ── Renderizadores por tipo de seção ─────────────────────────────────────────
 
 function BuiltinDadosGestacionais({ data }: { data: Record<string, any> }) {
   const rows = [
@@ -109,106 +106,24 @@ function BuiltinSection({ builtin_key, builtin_data }: { builtin_key: string; bu
   return null;
 }
 
-// ── Seção editável ────────────────────────────────────────────────────────────
-
-function EditableTextSection({
-  section, patientId, onSaved,
-}: { section: RenderedCardSection; patientId: string; onSaved: () => void }) {
-  const [value, setValue] = useState(section.content ?? '');
-  const [saving, setSaving] = useState(false);
-
-  const save = async () => {
-    setSaving(true);
-    try {
-      await cardService.saveSectionContent(patientId, section.section_id, { content: value });
-      onSaved();
-    } catch {}
-    finally { setSaving(false); }
-  };
-
-  return (
-    <View>
-      <TextInput
-        style={s.textArea}
-        multiline
-        value={value}
-        onChangeText={setValue}
-        placeholder="Escreva aqui..."
-        placeholderTextColor={colors.textInactive}
-        textAlignVertical="top"
-      />
-      <TouchableOpacity style={[s.saveBtn, saving && { opacity: 0.6 }]} onPress={save} disabled={saving}>
-        <Text style={s.saveBtnText}>{saving ? 'Salvando...' : 'Salvar'}</Text>
-      </TouchableOpacity>
-    </View>
-  );
+function ReadOnlyTextSection({ section }: { section: RenderedCardSection }) {
+  if (!section.content) return <Text style={s.emptyText}>Sem conteúdo.</Text>;
+  return <Text style={s.readOnlyText}>{section.content}</Text>;
 }
 
-function EditableFieldsSection({
-  section, patientId, onSaved,
-}: { section: RenderedCardSection; patientId: string; onSaved: () => void }) {
-  const [fields, setFields] = useState<CardFieldValue[]>(
-    section.fields?.length ? section.fields : [{ label: '', value: '', position: 0 }]
-  );
-  const [saving, setSaving] = useState(false);
-
-  const updateField = (idx: number, key: 'label' | 'value', val: string) => {
-    setFields((prev) => prev.map((f, i) => i === idx ? { ...f, [key]: val } : f));
-  };
-
-  const addField = () => {
-    setFields((prev) => [...prev, { label: '', value: '', position: prev.length }]);
-  };
-
-  const removeField = (idx: number) => {
-    setFields((prev) => prev.filter((_, i) => i !== idx).map((f, i) => ({ ...f, position: i })));
-  };
-
-  const save = async () => {
-    setSaving(true);
-    try {
-      const valid = fields.filter((f) => f.label.trim());
-      await cardService.saveSectionContent(patientId, section.section_id, { fields: valid });
-      onSaved();
-    } catch {}
-    finally { setSaving(false); }
-  };
-
+function ReadOnlyFieldsSection({ section }: { section: RenderedCardSection }) {
+  if (!section.fields?.length) return <Text style={s.emptyText}>Sem campos preenchidos.</Text>;
   return (
     <View>
-      {fields.map((f, idx) => (
-        <View key={idx} style={s.fieldRow}>
-          <TextInput
-            style={[s.fieldInput, { flex: 1 }]}
-            value={f.label}
-            onChangeText={(v) => updateField(idx, 'label', v)}
-            placeholder="Label"
-            placeholderTextColor={colors.textInactive}
-          />
-          <Text style={{ color: colors.textMid, marginHorizontal: 6 }}>:</Text>
-          <TextInput
-            style={[s.fieldInput, { flex: 2 }]}
-            value={f.value ?? ''}
-            onChangeText={(v) => updateField(idx, 'value', v)}
-            placeholder="Valor"
-            placeholderTextColor={colors.textInactive}
-          />
-          <TouchableOpacity onPress={() => removeField(idx)} style={{ padding: 6 }}>
-            <Text style={{ color: colors.accent, fontWeight: '700' }}>✕</Text>
-          </TouchableOpacity>
+      {section.fields.map((f, i) => (
+        <View key={i} style={s.infoRow}>
+          <Text style={s.infoKey}>{f.label}</Text>
+          <Text style={s.infoVal}>{f.value ?? '—'}</Text>
         </View>
       ))}
-      <TouchableOpacity onPress={addField} style={s.addFieldBtn}>
-        <Text style={s.addFieldBtnText}>+ Adicionar campo</Text>
-      </TouchableOpacity>
-      <TouchableOpacity style={[s.saveBtn, saving && { opacity: 0.6 }]} onPress={save} disabled={saving}>
-        <Text style={s.saveBtnText}>{saving ? 'Salvando...' : 'Salvar'}</Text>
-      </TouchableOpacity>
     </View>
   );
 }
-
-// ── Main Screen ───────────────────────────────────────────────────────────────
 
 export function PatientCardScreen() {
   const route = useRoute<RouteType>();
@@ -249,9 +164,9 @@ export function PatientCardScreen() {
             {section.section_type === 'builtin' && section.builtin_key && section.builtin_data ? (
               <BuiltinSection builtin_key={section.builtin_key} builtin_data={section.builtin_data} />
             ) : section.section_type === 'text' ? (
-              <EditableTextSection section={section} patientId={patientId} onSaved={load} />
+              <ReadOnlyTextSection section={section} />
             ) : section.section_type === 'fields' ? (
-              <EditableFieldsSection section={section} patientId={patientId} onSaved={load} />
+              <ReadOnlyFieldsSection section={section} />
             ) : null}
           </View>
         ))}
@@ -270,6 +185,7 @@ const s = StyleSheet.create({
   infoKey: { fontSize: 12, color: colors.textMid, fontWeight: '600', flex: 1 },
   infoVal: { fontSize: 13, color: colors.text, fontWeight: '600', flex: 1, textAlign: 'right' },
   emptyText: { fontSize: 13, color: colors.textMid, fontStyle: 'italic' },
+  readOnlyText: { fontSize: 14, color: colors.text, lineHeight: 20 },
   tableHeader: { flexDirection: 'row', backgroundColor: colors.primaryLight, borderRadius: 6, paddingVertical: 6, paddingHorizontal: 4, marginBottom: 4 },
   tableHeaderCell: { flex: 1, fontSize: 10, fontWeight: '700', color: colors.primaryDk, textAlign: 'center' },
   tableRow: { flexDirection: 'row', paddingVertical: 8, paddingHorizontal: 4, backgroundColor: colors.white },
@@ -277,11 +193,4 @@ const s = StyleSheet.create({
   listItem: { paddingVertical: 8, borderBottomWidth: 1, borderBottomColor: 'rgba(0,0,0,0.05)' },
   listItemTitle: { fontSize: 13, fontWeight: '700', color: colors.text },
   listItemSub: { fontSize: 11, color: colors.textMid, marginTop: 2 },
-  textArea: { backgroundColor: colors.bg, borderRadius: radius.sm, padding: 12, fontSize: 14, color: colors.text, minHeight: 100, marginBottom: 12 },
-  fieldRow: { flexDirection: 'row', alignItems: 'center', marginBottom: 8 },
-  fieldInput: { backgroundColor: colors.bg, borderRadius: radius.sm, padding: 10, fontSize: 13, color: colors.text },
-  addFieldBtn: { borderWidth: 1, borderColor: colors.primary, borderStyle: 'dashed', borderRadius: radius.sm, padding: 10, alignItems: 'center', marginBottom: 12 },
-  addFieldBtnText: { fontSize: 13, fontWeight: '600', color: colors.primary },
-  saveBtn: { backgroundColor: colors.primary, borderRadius: radius.full, padding: 14, alignItems: 'center' },
-  saveBtnText: { fontSize: 14, fontWeight: '700', color: colors.white },
 });

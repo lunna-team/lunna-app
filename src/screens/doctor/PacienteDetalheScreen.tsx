@@ -612,10 +612,16 @@ function ConsultasTab({ patientId }: { patientId: string }) {
     presentation: '' | 'cephalic' | 'breech' | 'transverse';
     fetal_movements: boolean; edema: EdemaGrade;
     bp_systolic: string; bp_diastolic: string; clinical_notes: string;
+    queixas: string; observacoes_medicas: string;
+    pfe_gramas: string; pfe_percentil: string; doppler: string;
+    observacoes_exame_fisico: string; conduta: string;
   }>({
     weight_kg: '', fundal_height_cm: '', fetal_heart_rate: '',
     presentation: '', fetal_movements: true, edema: 'none',
     bp_systolic: '', bp_diastolic: '', clinical_notes: '',
+    queixas: '', observacoes_medicas: '',
+    pfe_gramas: '', pfe_percentil: '', doppler: '',
+    observacoes_exame_fisico: '', conduta: '',
   });
 
   useEffect(() => {
@@ -641,12 +647,22 @@ function ConsultasTab({ patientId }: { patientId: string }) {
         bp_systolic: evo.bp_systolic ? String(evo.bp_systolic) : '',
         bp_diastolic: evo.bp_diastolic ? String(evo.bp_diastolic) : '',
         clinical_notes: evo.clinical_notes ?? '',
+        queixas: evo.queixas ?? '',
+        observacoes_medicas: evo.observacoes_medicas ?? '',
+        pfe_gramas: evo.pfe_gramas ? String(evo.pfe_gramas) : '',
+        pfe_percentil: evo.pfe_percentil ?? '',
+        doppler: evo.doppler ?? '',
+        observacoes_exame_fisico: evo.observacoes_exame_fisico ?? '',
+        conduta: evo.conduta ?? '',
       });
     } catch {
       setEvoForm({
         weight_kg: '', fundal_height_cm: '', fetal_heart_rate: '',
         presentation: '', fetal_movements: true, edema: 'none',
         bp_systolic: '', bp_diastolic: '', clinical_notes: '',
+        queixas: '', observacoes_medicas: '',
+        pfe_gramas: '', pfe_percentil: '', doppler: '',
+        observacoes_exame_fisico: '', conduta: '',
       });
     } finally { setEvoLoading(false); }
   };
@@ -665,6 +681,13 @@ function ConsultasTab({ patientId }: { patientId: string }) {
         bp_systolic: evoForm.bp_systolic ? parseInt(evoForm.bp_systolic) : undefined,
         bp_diastolic: evoForm.bp_diastolic ? parseInt(evoForm.bp_diastolic) : undefined,
         clinical_notes: evoForm.clinical_notes || undefined,
+        queixas: evoForm.queixas || undefined,
+        observacoes_medicas: evoForm.observacoes_medicas || undefined,
+        pfe_gramas: evoForm.pfe_gramas ? parseInt(evoForm.pfe_gramas) : undefined,
+        pfe_percentil: evoForm.pfe_percentil || undefined,
+        doppler: evoForm.doppler || undefined,
+        observacoes_exame_fisico: evoForm.observacoes_exame_fisico || undefined,
+        conduta: evoForm.conduta || undefined,
       });
       setSelectedAppt(null);
     } catch {}
@@ -771,9 +794,44 @@ function ConsultasTab({ patientId }: { patientId: string }) {
                 </TouchableOpacity>
               ))}
             </View>
+            <Field label="Queixas" value={evoForm.queixas}
+              onChange={(v) => setEvoForm((f) => ({ ...f, queixas: v }))}
+              multiline placeholder="Descreva as queixas da paciente..." />
+            <Row>
+              <View style={{ flex: 1 }}>
+                <Field label="PFE (gramas)" value={evoForm.pfe_gramas}
+                  onChange={(v) => setEvoForm((f) => ({ ...f, pfe_gramas: v }))} placeholder="ex: 800" />
+              </View>
+              <View style={{ flex: 1 }}>
+                <Field label="PFE percentil" value={evoForm.pfe_percentil}
+                  onChange={(v) => setEvoForm((f) => ({ ...f, pfe_percentil: v }))} placeholder="ex: p30" />
+              </View>
+            </Row>
+            <Text style={s.fieldLabel}>Doppler</Text>
+            <View style={{ flexDirection: 'row', gap: 8, marginBottom: 16 }}>
+              {(['normal', 'alterado', 'não realizado'] as const).map((v) => (
+                <TouchableOpacity key={v}
+                  style={[s.chip2, evoForm.doppler === v && s.chip2Active]}
+                  onPress={() => setEvoForm((f) => ({ ...f, doppler: v }))}
+                >
+                  <Text style={[s.chip2Text, evoForm.doppler === v && s.chip2TextActive]}>
+                    {v.charAt(0).toUpperCase() + v.slice(1)}
+                  </Text>
+                </TouchableOpacity>
+              ))}
+            </View>
+            <Field label="Obs. do Exame Físico" value={evoForm.observacoes_exame_fisico}
+              onChange={(v) => setEvoForm((f) => ({ ...f, observacoes_exame_fisico: v }))}
+              multiline placeholder="USG, achados do exame..." />
+            <Field label="Observações Médicas (Confidencial)" value={evoForm.observacoes_medicas}
+              onChange={(v) => setEvoForm((f) => ({ ...f, observacoes_medicas: v }))}
+              multiline placeholder="Visível apenas para a equipe médica..." />
+            <Field label="Conduta" value={evoForm.conduta}
+              onChange={(v) => setEvoForm((f) => ({ ...f, conduta: v }))}
+              multiline placeholder="Prescrições, orientações, retorno..." />
             <Field label="Notas clínicas" value={evoForm.clinical_notes}
               onChange={(v) => setEvoForm((f) => ({ ...f, clinical_notes: v }))}
-              multiline placeholder="Evolução sem intercorrências..." />
+              multiline placeholder="Observações adicionais..." />
             <TouchableOpacity style={[s.saveBtn, evoSaving && { opacity: 0.6 }]} onPress={salvarEvo} disabled={evoSaving}>
               <Text style={s.saveBtnText}>{evoSaving ? 'Salvando...' : 'Salvar Evolução'}</Text>
             </TouchableOpacity>
