@@ -151,7 +151,7 @@ export function DashboardMedicoScreen() {
         {/* CLINIC BADGE */}
         <View style={styles.clinicBadge}>
           <IconHospital />
-          <Text style={styles.clinicText}>Clínica Gerar Vida · Obstetra</Text>
+          <Text style={styles.clinicText}>Clínica Lunna · Obstetra</Text>
         </View>
 
         {/* STATS */}

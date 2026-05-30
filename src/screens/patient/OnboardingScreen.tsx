@@ -1,5 +1,5 @@
-import React, { useRef, useState } from 'react';
-import { View, Text, StyleSheet, FlatList, TouchableOpacity, Dimensions, NativeSyntheticEvent, NativeScrollEvent } from 'react-native';
+import React, { useState } from 'react';
+import { View, Text, StyleSheet, TouchableOpacity } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -7,27 +7,24 @@ import { PatientStackParams } from '../../navigation/PatientNavigator';
 import { storage, STORAGE_KEYS } from '../../services/storage';
 import { colors, spacing, radius } from '../../theme';
 
-const { width } = Dimensions.get('window');
 const slides = [
-  { icon: '🌱', title: 'Bem-vinda ao\nGerar Vida', desc: 'Seu parceiro digital para um pré-natal completo e tranquilo. Acompanhe cada semana da sua gestação.' },
+  { icon: '🌱', title: 'Bem-vinda à\nLunna', desc: 'Seu parceiro digital para um pré-natal completo e tranquilo. Acompanhe cada semana da sua gestação.' },
   { icon: '🫁', title: 'Veja seu bebê\nem 3D', desc: 'Explore o desenvolvimento do seu bebê em um modelo 3D interativo e acompanhe cada detalhe.' },
-  { icon: '🏥', title: 'Clínica Gerar Vida\nperto de você', desc: 'Médico Dedicado · Resultados Online · Canal 24h.\nTudo que você precisa em um só lugar.' },
+  { icon: '🏥', title: 'Clínica Lunna\nperto de você', desc: 'Médico Dedicado · Resultados Online · Canal 24h.\nTudo que você precisa em um só lugar.' },
 ];
+
 type Nav = NativeStackNavigationProp<PatientStackParams>;
 
 export function OnboardingScreen() {
   const [activeIndex, setActiveIndex] = useState(0);
-  const listRef = useRef<FlatList>(null);
   const navigation = useNavigation<Nav>();
   const insets = useSafeAreaInsets();
 
-  const onScroll = (e: NativeSyntheticEvent<NativeScrollEvent>) => {
-    setActiveIndex(Math.round(e.nativeEvent.contentOffset.x / width));
-  };
+  const slide = slides[activeIndex];
 
   const next = async () => {
     if (activeIndex < slides.length - 1) {
-      listRef.current?.scrollToIndex({ index: activeIndex + 1 });
+      setActiveIndex(activeIndex + 1);
     } else {
       await storage.set(STORAGE_KEYS.onboarded, true);
       navigation.replace('Home');
@@ -36,23 +33,11 @@ export function OnboardingScreen() {
 
   return (
     <View style={[styles.container, { paddingBottom: insets.bottom + 24 }]}>
-      <FlatList
-        ref={listRef}
-        data={slides}
-        horizontal
-        pagingEnabled
-        showsHorizontalScrollIndicator={false}
-        onScroll={onScroll}
-        scrollEventThrottle={16}
-        keyExtractor={(_, i) => String(i)}
-        renderItem={({ item }) => (
-          <View style={[styles.slide, { width }]}>
-            <Text style={styles.icon}>{item.icon}</Text>
-            <Text style={styles.title}>{item.title}</Text>
-            <Text style={styles.desc}>{item.desc}</Text>
-          </View>
-        )}
-      />
+      <View style={styles.slide}>
+        <Text style={styles.icon}>{slide.icon}</Text>
+        <Text style={styles.title}>{slide.title}</Text>
+        <Text style={styles.desc}>{slide.desc}</Text>
+      </View>
       <View style={styles.dots}>
         {slides.map((_, i) => (
           <View key={i} style={[styles.dot, i === activeIndex && styles.dotActive]} />

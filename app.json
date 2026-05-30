@@ -1,7 +1,7 @@
 {
   "expo": {
-    "name": "Gerar Vida",
-    "slug": "gerar-vida",
+    "name": "Lunna",
+    "slug": "lunna-app",
     "version": "1.0.0",
     "orientation": "portrait",
     "icon": "./assets/icon.png",
@@ -14,10 +14,10 @@
     },
     "ios": {
       "supportsTablet": false,
-      "bundleIdentifier": "com.gerarvida.app"
+      "bundleIdentifier": "com.lunna.app"
     },
     "android": {
-      "package": "com.gerarvida.app",
+      "package": "com.lunna.app",
       "adaptiveIcon": {
         "foregroundImage": "./assets/adaptive-icon.png",
         "backgroundColor": "#8DAA91"

@@ -41,11 +41,11 @@ export function GlicoseScreen() {
   const [saving, setSaving] = useState(false);
 
   const load = useCallback(async () => {
-    if (!user?.id) return;
+    if (!user?.patient_id) return;
     try {
       const [listRes, statsRes] = await Promise.all([
-        vitalsService.listGlucoseReadings(user.id),
-        vitalsService.getGlucoseStats(user.id),
+        vitalsService.listGlucoseReadings(user.patient_id),
+        vitalsService.getGlucoseStats(user.patient_id),
       ]);
       setReadings(listRes.data);
       setStats(statsRes);
@@ -54,7 +54,7 @@ export function GlicoseScreen() {
     } finally {
       setLoading(false);
     }
-  }, [user?.id]);
+  }, [user?.patient_id]);
 
   useEffect(() => { load(); }, [load]);
 
@@ -67,10 +67,10 @@ export function GlicoseScreen() {
       Alert.alert('Valor inválido', 'Digite um valor de glicose válido em mg/dL.');
       return;
     }
-    if (!user?.id) return;
+    if (!user?.patient_id) return;
     setSaving(true);
     try {
-      await vitalsService.createGlucose(user.id, {
+      await vitalsService.createGlucose(user.patient_id, {
         value_mg_dl: numValue,
         moment,
         notes: notes.trim() || undefined,

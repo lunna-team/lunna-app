@@ -35,13 +35,13 @@ export function NomesScreen() {
   const meninos = nomes.filter((n) => n.gender === 'male');
 
   const handleToggleFavorite = async (name: BabyName) => {
-    if (!user?.id || favoriting) return;
+    if (!user?.patient_id || favoriting) return;
     setFavoriting(name.id);
     try {
       if (name.is_favorite) {
-        await babyNamesService.removeFavorite(user.id, name.id);
+        await babyNamesService.removeFavorite(user.patient_id, name.id);
       } else {
-        await babyNamesService.addFavorite(user.id, name.id);
+        await babyNamesService.addFavorite(user.patient_id, name.id);
       }
       setNomes((prev) =>
         prev.map((n) => (n.id === name.id ? { ...n, is_favorite: !n.is_favorite } : n)),

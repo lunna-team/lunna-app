@@ -1,4 +1,4 @@
-# Gerar Vida — Mobile App
+# Lunna — Mobile App
 
 App pré-natal white-label para clínicas privadas de obstetrícia.
 

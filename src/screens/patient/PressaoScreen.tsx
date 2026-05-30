@@ -43,11 +43,11 @@ export function PressaoScreen() {
   const [saving, setSaving] = useState(false);
 
   const load = useCallback(async () => {
-    if (!user?.id) return;
+    if (!user?.patient_id) return;
     try {
       const [listRes, statsRes] = await Promise.all([
-        vitalsService.listBloodPressureReadings(user.id),
-        vitalsService.getBloodPressureStats(user.id),
+        vitalsService.listBloodPressureReadings(user.patient_id),
+        vitalsService.getBloodPressureStats(user.patient_id),
       ]);
       setReadings(listRes.data);
       setStats(statsRes);
@@ -56,7 +56,7 @@ export function PressaoScreen() {
     } finally {
       setLoading(false);
     }
-  }, [user?.id]);
+  }, [user?.patient_id]);
 
   useEffect(() => { load(); }, [load]);
 
@@ -69,10 +69,10 @@ export function PressaoScreen() {
       Alert.alert('Valores inválidos', 'Preencha sistólica e diastólica corretamente.');
       return;
     }
-    if (!user?.id) return;
+    if (!user?.patient_id) return;
     setSaving(true);
     try {
-      await vitalsService.createBloodPressure(user.id, {
+      await vitalsService.createBloodPressure(user.patient_id, {
         systolic: sys,
         diastolic: dia,
         pulse_bpm: pulse ? parseInt(pulse, 10) : undefined,

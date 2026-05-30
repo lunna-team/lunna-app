@@ -1,7 +1,7 @@
 import React, { useState, useRef, useEffect } from 'react';
 import {
   View, Text, StyleSheet, Image, TouchableOpacity,
-  Animated, Easing,
+  Animated, Easing, Platform,
 } from 'react-native';
 import Svg, { Polyline, Line } from 'react-native-svg';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -84,9 +84,9 @@ export function Feto3DScreen() {
   const selected = selectedId ? HOTSPOT_DATA[selectedId] : null;
 
   useEffect(() => {
-    if (!user?.id) return;
-    patientsService.getProntuario(user.id).then(setProntuario).catch(() => {});
-  }, [user?.id]);
+    if (!user?.patient_id) return;
+    patientsService.getProntuario(user.patient_id).then(setProntuario).catch(() => {});
+  }, [user?.patient_id]);
 
   useEffect(() => {
     const week = prontuario?.current_week ?? 24;
@@ -211,7 +211,10 @@ const styles = StyleSheet.create({
   },
   weekLabel: {
     fontSize: 17, fontWeight: '700', color: 'white',
-    textShadowColor: 'rgba(0,0,0,0.7)', textShadowOffset: { width: 0, height: 2 }, textShadowRadius: 14,
+    ...Platform.select({
+      web: { textShadow: '0 2px 14px rgba(0,0,0,0.7)' },
+      default: { textShadowColor: 'rgba(0,0,0,0.7)', textShadowOffset: { width: 0, height: 2 }, textShadowRadius: 14 },
+    }),
   },
   // hotspots
   hotspotWrap: {
@@ -232,14 +235,20 @@ const styles = StyleSheet.create({
   hotspotLabel: {
     fontSize: 9.5, fontWeight: '700', color: 'rgba(197,213,200,0.95)',
     marginTop: 4,
-    textShadowColor: 'rgba(0,0,0,0.9)', textShadowOffset: { width: 0, height: 1 }, textShadowRadius: 6,
+    ...Platform.select({
+      web: { textShadow: '0 1px 6px rgba(0,0,0,0.9)' },
+      default: { textShadowColor: 'rgba(0,0,0,0.9)', textShadowOffset: { width: 0, height: 1 }, textShadowRadius: 6 },
+    }),
     letterSpacing: 0.3,
   },
   // info card
   infoCard: {
     position: 'absolute', bottom: 130, left: 18, right: 18, zIndex: 220,
     backgroundColor: 'rgba(252,250,248,0.97)', borderRadius: 22, padding: 20,
-    shadowColor: '#000', shadowOffset: { width: 0, height: 20 }, shadowOpacity: 0.55, shadowRadius: 40, elevation: 20,
+    ...Platform.select({
+      web: { boxShadow: '0 20px 40px rgba(0,0,0,0.55)' },
+      default: { shadowColor: '#000', shadowOffset: { width: 0, height: 20 }, shadowOpacity: 0.55, shadowRadius: 40, elevation: 20 },
+    }),
   },
   infoClose: {
     position: 'absolute', top: 12, right: 14, width: 28, height: 28, borderRadius: 14,
@@ -269,7 +278,10 @@ const styles = StyleSheet.create({
     position: 'absolute', bottom: 0, left: 18, right: 18, zIndex: 200,
     backgroundColor: colors.accent, borderRadius: 20, padding: 15,
     flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
-    shadowColor: colors.accent, shadowOffset: { width: 0, height: 10 }, shadowOpacity: 0.5, shadowRadius: 24, elevation: 12,
+    ...Platform.select({
+      web: { boxShadow: '0 10px 24px rgba(229,152,125,0.5)' },
+      default: { shadowColor: colors.accent, shadowOffset: { width: 0, height: 10 }, shadowOpacity: 0.5, shadowRadius: 24, elevation: 12 },
+    }),
   },
   gestLabel: { fontSize: 10, fontWeight: '700', textTransform: 'uppercase', letterSpacing: 1, color: 'rgba(255,255,255,0.8)', marginBottom: 3 },
   gestMain: { fontSize: 18, fontWeight: '800', color: 'white', letterSpacing: -0.4 },

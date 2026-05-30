@@ -1,4 +1,4 @@
-# CLAUDE.md — Gerar Vida (App Mobile)
+# CLAUDE.md — Lunna (App Mobile)
 
 Contexto do projeto para Claude Code. Atualizar sempre que houver mudanças significativas.
 
@@ -6,7 +6,7 @@ Contexto do projeto para Claude Code. Atualizar sempre que houver mudanças sign
 
 ## Visão Geral
 
-**Gerar Vida** é o app mobile pré-natal da plataforma **Lunna** — SaaS white-label para clínicas privadas de obstetrícia. Três perfis: paciente, médico(a) e secretária.
+**Lunna** é o app mobile pré-natal da plataforma de mesmo nome — SaaS white-label para clínicas privadas de obstetrícia. Três perfis: paciente, médico(a) e secretária.
 
 ---
 

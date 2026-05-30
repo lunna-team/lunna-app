@@ -60,16 +60,16 @@ export function ConsultasScreen() {
   const [actionLoading, setActionLoading] = useState(false);
 
   const load = useCallback(async () => {
-    if (!user?.id) return;
+    if (!user?.patient_id) return;
     try {
-      const res = await appointmentsService.listPatientAppointments(user.id, { limit: 20 });
+      const res = await appointmentsService.listPatientAppointments(user.patient_id, { limit: 20 });
       setAppointments(res.data);
     } catch {
       Alert.alert('Erro', 'Não foi possível carregar as consultas.');
     } finally {
       setLoading(false);
     }
-  }, [user?.id]);
+  }, [user?.patient_id]);
 
   useEffect(() => { load(); }, [load]);
 
@@ -125,7 +125,7 @@ export function ConsultasScreen() {
               <Text style={styles.sectionTitle}>Próxima Consulta</Text>
               <View style={styles.nextCard}>
                 <Text style={styles.nextDate}>{formatDateTime(nextAppt.date, nextAppt.time)}</Text>
-                <Text style={styles.nextLocation}>{nextAppt.location ?? 'Clínica Gerar Vida'}</Text>
+                <Text style={styles.nextLocation}>{nextAppt.location ?? 'Clínica Lunna'}</Text>
                 <Text style={styles.nextType}>{TYPE_LABELS[nextAppt.type] ?? nextAppt.type}</Text>
 
                 <View style={[styles.statusBadge, { backgroundColor: STATUS_COLORS[nextAppt.patient_status] + '20' }]}>

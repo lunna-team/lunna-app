@@ -29,12 +29,12 @@ export function ContracoesScreen() {
   const insets = useSafeAreaInsets();
 
   useEffect(() => {
-    if (!user?.id) return;
+    if (!user?.patient_id) return;
     vitalsService
-      .listContractions(user.id)
+      .listContractions(user.patient_id)
       .then((res) => setContracoes(res.data))
       .catch(() => {});
-  }, [user?.id]);
+  }, [user?.patient_id]);
 
   const avgDuracao = contracoes.length
     ? Math.round(contracoes.reduce((s, c) => s + c.duration_seconds, 0) / contracoes.length)
@@ -53,7 +53,7 @@ export function ContracoesScreen() {
   };
 
   const endPress = async () => {
-    if (!isActive || !user?.id) return;
+    if (!isActive || !user?.patient_id) return;
     setIsActive(false);
     if (intervalRef.current) clearInterval(intervalRef.current);
 
@@ -64,7 +64,7 @@ export function ContracoesScreen() {
       : undefined;
 
     try {
-      const nova = await vitalsService.createContraction(user.id, {
+      const nova = await vitalsService.createContraction(user.patient_id, {
         duration_seconds: duration,
         interval_minutes: interval,
         session_date: todayISO(),
@@ -77,7 +77,7 @@ export function ContracoesScreen() {
   };
 
   const limpar = () => {
-    if (!user?.id) return;
+    if (!user?.patient_id) return;
     Alert.alert('Limpar sessão', 'Apagar todas as contrações?', [
       { text: 'Cancelar', style: 'cancel' },
       {
@@ -85,7 +85,7 @@ export function ContracoesScreen() {
         style: 'destructive',
         onPress: async () => {
           try {
-            await vitalsService.clearContractionSession(user.id);
+            await vitalsService.clearContractionSession(user.patient_id!);
             setContracoes([]);
           } catch {
             Alert.alert('Erro', 'Não foi possível limpar a sessão.');

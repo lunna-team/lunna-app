@@ -78,11 +78,11 @@ export function AreaMedicaScreen() {
   const insets = useSafeAreaInsets();
 
   useEffect(() => {
-    if (!user?.id) return;
+    if (!user?.patient_id) return;
     Promise.all([
-      medicationsService.list(user.id, { active: true, limit: 20 }),
-      examsService.listLabTests(user.id, { limit: 20 }),
-      examsService.listUltrasounds(user.id, { limit: 10 }),
+      medicationsService.list(user.patient_id, { active: true, limit: 20 }),
+      examsService.listLabTests(user.patient_id, { limit: 20 }),
+      examsService.listUltrasounds(user.patient_id, { limit: 10 }),
     ])
       .then(([mRes, lRes, uRes]) => {
         setMedications(mRes.data);
@@ -91,7 +91,7 @@ export function AreaMedicaScreen() {
       })
       .catch(() => {})
       .finally(() => setLoading(false));
-  }, [user?.id]);
+  }, [user?.patient_id]);
 
   const toggleDone = (id: string) => {
     setDoneIds((prev) => {

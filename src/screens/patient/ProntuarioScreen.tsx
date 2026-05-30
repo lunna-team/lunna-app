@@ -27,9 +27,9 @@ export function ProntuarioScreen() {
   const insets = useSafeAreaInsets();
 
   const load = () => {
-    if (!user?.id) return;
+    if (!user?.patient_id) return;
     patientsService
-      .getProntuario(user.id)
+      .getProntuario(user.patient_id)
       .then((pr) => {
         setProntuario(pr);
         if (pr.patient_id) {

@@ -50,17 +50,17 @@ export function HomeScreen() {
   }, []);
 
   useEffect(() => {
-    if (!user?.id) return;
+    if (!user?.patient_id) return;
     appointmentsService
-      .listPatientAppointments(user.id, { status: 'confirmed', limit: 1, offset: 0 })
+      .listPatientAppointments(user.patient_id, { status: 'confirmed', limit: 1, offset: 0 })
       .then((res) => setNextAppointment(res.data[0] ?? null))
       .catch(() => setNextAppointment(null))
       .finally(() => setLoadingAppt(false));
     patientsService
-      .getProntuario(user.id)
+      .getProntuario(user.patient_id)
       .then((p) => setSemana(p.current_week ?? 0))
       .catch(() => {});
-  }, [user?.id]);
+  }, [user?.patient_id]);
 
   useEffect(() => {
     if (!user?.clinic_id) return;
@@ -190,7 +190,7 @@ export function HomeScreen() {
                 {formatDate(nextAppointment.datetime)} · {nextAppointment.time.slice(0, 5)}
               </Text>
               <Text style={styles.consultaLocal}>
-                {nextAppointment.location ?? 'Clínica Gerar Vida'}
+                {nextAppointment.location ?? 'Clínica Lunna'}
               </Text>
             </>
           ) : (
