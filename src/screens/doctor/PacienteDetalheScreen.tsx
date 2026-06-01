@@ -62,6 +62,26 @@ function formatDate(iso: string): string {
   return new Date(iso).toLocaleDateString('pt-BR');
 }
 
+function calcWeek(edd: string | null, currentWeek: number | null): number | null {
+  if (currentWeek != null) return currentWeek;
+  if (!edd) return null;
+  const msPerWeek = 7 * 24 * 60 * 60 * 1000;
+  const week = Math.round(40 - (new Date(edd).getTime() - Date.now()) / msPerWeek);
+  return week >= 1 && week <= 42 ? week : null;
+}
+
+function getTriColor(week: number): string {
+  if (week <= 13) return '#3A7DB5';
+  if (week <= 27) return '#8DAA91';
+  return '#E5987D';
+}
+
+function getTriLabel(week: number): string {
+  if (week <= 13) return '1º Tri';
+  if (week <= 27) return '2º Tri';
+  return '3º Tri';
+}
+
 // ── Reusable components ───────────────────────────────────────────────────────
 
 function Sheet({ visible, onClose, title, children }: {
@@ -210,18 +230,23 @@ function GeralTab({ patientId }: { patientId: string }) {
               {(patient?.name ?? '??').split(' ').slice(0, 2).map((n) => n[0]).join('')}
             </Text>
           </View>
-          <View>
+          <View style={{ flex: 1, minWidth: 0 }}>
             <Text style={s.darkName}>{patient?.name ?? '—'}</Text>
-            <Text style={s.darkMeta}>
-              {[patient?.blood_type, prontuario?.current_week ? `Sem. ${prontuario.current_week}` : null]
-                .filter(Boolean).join(' · ')}
-            </Text>
+            <Text style={s.darkMeta}>{patient?.blood_type ?? ''}</Text>
           </View>
+          {(() => {
+            const week = calcWeek(prontuario?.edd ?? null, prontuario?.current_week ?? null);
+            if (week == null) return null;
+            const color = getTriColor(week);
+            return (
+              <View style={{ alignItems: 'center', marginLeft: 8 }}>
+                <Text style={{ fontSize: 28, fontWeight: '800', color, lineHeight: 30 }}>{week}</Text>
+                <Text style={{ fontSize: 10, fontWeight: '600', color: 'rgba(255,255,255,0.55)', marginTop: 1 }}>sem. · {getTriLabel(week)}</Text>
+              </View>
+            );
+          })()}
         </View>
         <View style={s.chipRow}>
-          {prontuario?.current_week && (
-            <View style={s.chip}><Text style={s.chipText}>Sem. {prontuario.current_week}/42</Text></View>
-          )}
           {prontuario?.edd && (
             <View style={s.chip}>
               <Text style={s.chipText}>DPP: {formatDate(prontuario.edd)}</Text>
@@ -229,6 +254,18 @@ function GeralTab({ patientId }: { patientId: string }) {
           )}
         </View>
       </View>
+
+      {/* Banner cadastro incompleto — sem e-mail real */}
+      {patient?.email?.includes('@sem-email.lunna.app') && (
+        <TouchableOpacity style={s.incompleteBanner} onPress={() => setEditModal(true)} activeOpacity={0.8}>
+          <Text style={s.incompleteBannerIcon}>⚠️</Text>
+          <View style={{ flex: 1 }}>
+            <Text style={s.incompleteBannerTitle}>Cadastro incompleto</Text>
+            <Text style={s.incompleteBannerSub}>Adicione e-mail para liberar acesso ao app</Text>
+          </View>
+          <Text style={s.incompleteBannerAction}>Completar →</Text>
+        </TouchableOpacity>
+      )}
 
       <View style={[s.infoCard, { marginBottom: 12 }]}>
         <View style={s.infoCardHeader}>
@@ -1351,6 +1388,15 @@ const s = StyleSheet.create({
   tabText: { fontSize: 13, fontWeight: '600', color: colors.textInactive },
   tabTextActive: { color: colors.white },
 
+  incompleteBanner: {
+    backgroundColor: 'rgba(245,166,35,0.12)', borderRadius: radius.md, padding: 14,
+    flexDirection: 'row', alignItems: 'center', gap: 10, marginBottom: 12,
+    borderLeftWidth: 3, borderLeftColor: '#d4a017',
+  },
+  incompleteBannerIcon: { fontSize: 18 },
+  incompleteBannerTitle: { fontSize: 13, fontWeight: '800', color: '#7a5c00' },
+  incompleteBannerSub: { fontSize: 11, color: '#a07800', marginTop: 2 },
+  incompleteBannerAction: { fontSize: 12, fontWeight: '700', color: '#d4a017' },
   darkCard: { backgroundColor: colors.darkCard, borderRadius: radius.lg, padding: 18, marginBottom: 12 },
   darkAvatar: { width: 52, height: 52, borderRadius: 26, backgroundColor: 'rgba(255,255,255,0.15)', justifyContent: 'center', alignItems: 'center' },
   darkAvatarText: { fontSize: 17, fontWeight: '800', color: colors.white },

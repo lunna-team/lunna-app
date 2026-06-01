@@ -2,6 +2,8 @@ import React, { useState, useEffect, useRef } from 'react';
 import {
   View, Text, StyleSheet, ScrollView, TouchableOpacity, TextInput, ActivityIndicator,
 } from 'react-native';
+import { NovaGestanteModal } from './NovaGestanteModal';
+import { OnboardingGestante } from './OnboardingGestante';
 import { useNavigation } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -24,12 +26,35 @@ function getInitials(name: string): string {
   return name.split(' ').slice(0, 2).map((n) => n[0]).join('').toUpperCase();
 }
 
+function calcWeek(edd: string | null, currentWeek: number | null): number | null {
+  if (currentWeek != null) return currentWeek;
+  if (!edd) return null;
+  const msPerWeek = 7 * 24 * 60 * 60 * 1000;
+  const weeksUntilEdd = (new Date(edd).getTime() - Date.now()) / msPerWeek;
+  const week = Math.round(40 - weeksUntilEdd);
+  return week >= 1 && week <= 42 ? week : null;
+}
+
+function getTriColor(week: number): string {
+  if (week <= 13) return '#3A7DB5';
+  if (week <= 27) return '#5E7E63';
+  return '#b5522a';
+}
+
+function getTriLabel(week: number): string {
+  if (week <= 13) return '1º Tri';
+  if (week <= 27) return '2º Tri';
+  return '3º Tri';
+}
+
 export function MedicoPacientesScreen() {
   const { user } = useAuth();
   const [busca, setBusca] = useState('');
   const [filtroRisk, setFiltroRisk] = useState<RiskFilter>('todos');
   const [pacientes, setPacientes] = useState<PatientDetail[]>([]);
   const [loading, setLoading] = useState(true);
+  const [showNova, setShowNova] = useState(false);
+  const [onboardingPatientId, setOnboardingPatientId] = useState<string | null>(null);
   const navigation = useNavigation<Nav>();
   const insets = useSafeAreaInsets();
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -66,6 +91,25 @@ export function MedicoPacientesScreen() {
   return (
     <View style={[styles.container, { paddingBottom: insets.bottom }]}>
       <ScreenHeader title="Pacientes" />
+
+      <NovaGestanteModal
+        visible={showNova}
+        onClose={() => setShowNova(false)}
+        onCreated={(id) => {
+          setShowNova(false);
+          setOnboardingPatientId(id);
+        }}
+      />
+      {onboardingPatientId && (
+        <OnboardingGestante
+          visible={true}
+          patientId={onboardingPatientId}
+          onFinish={() => {
+            setOnboardingPatientId(null);
+            fetchPacientes(busca, filtroRisk);
+          }}
+        />
+      )}
       <View style={{ paddingHorizontal: spacing.lg, paddingTop: 16, gap: 12 }}>
         <TextInput
           style={styles.searchInput}
@@ -118,17 +162,28 @@ export function MedicoPacientesScreen() {
                 )}
               </View>
               <View style={{ alignItems: 'flex-end', gap: 6 }}>
-                {p.current_week != null && (
-                  <View style={styles.weekBadge}>
-                    <Text style={styles.weekText}>Sem. {p.current_week}</Text>
-                  </View>
-                )}
+                {(() => {
+                  const week = calcWeek(p.edd, p.current_week);
+                  if (week == null) return null;
+                  const color = getTriColor(week);
+                  return (
+                    <View style={styles.weekBadge}>
+                      <Text style={[styles.weekNum, { color }]}>{week}</Text>
+                      <Text style={styles.weekSub}>{getTriLabel(week)}</Text>
+                    </View>
+                  );
+                })()}
                 <RiskBadge risk={RISK_BADGE_MAP[p.risk_level]} />
               </View>
             </TouchableOpacity>
           ))}
         </ScrollView>
       )}
+
+      {/* FAB */}
+      <TouchableOpacity style={styles.fab} onPress={() => setShowNova(true)} activeOpacity={0.85}>
+        <Text style={styles.fabText}>+</Text>
+      </TouchableOpacity>
     </View>
   );
 }
@@ -147,6 +202,16 @@ const styles = StyleSheet.create({
   avatarText: { fontSize: 16, fontWeight: '700', color: colors.primaryDk },
   nome: { fontSize: 14, fontWeight: '700', color: colors.text },
   meta: { fontSize: 11.5, color: colors.textMid, marginTop: 1 },
-  weekBadge: { backgroundColor: colors.primaryLight, paddingHorizontal: 10, paddingVertical: 4, borderRadius: radius.full },
-  weekText: { fontSize: 11, fontWeight: '700', color: colors.primaryDk },
+  fab: {
+    position: 'absolute', bottom: 24, right: 24,
+    width: 56, height: 56, borderRadius: 28,
+    backgroundColor: colors.primary,
+    justifyContent: 'center', alignItems: 'center',
+    shadowColor: '#000', shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.2, shadowRadius: 8, elevation: 6,
+  },
+  fabText: { fontSize: 28, color: '#fff', lineHeight: 32, fontWeight: '300' },
+  weekBadge: { alignItems: 'center' },
+  weekNum: { fontSize: 20, fontWeight: '800', lineHeight: 22 },
+  weekSub: { fontSize: 10, fontWeight: '600', color: colors.textInactive, marginTop: 1 },
 });

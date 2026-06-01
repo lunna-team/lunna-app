@@ -23,6 +23,27 @@ function getInitials(name: string): string {
   return name.split(' ').slice(0, 2).map((n) => n[0]).join('').toUpperCase();
 }
 
+function calcWeek(edd: string | null, currentWeek: number | null): number | null {
+  if (currentWeek != null) return currentWeek;
+  if (!edd) return null;
+  const msPerWeek = 7 * 24 * 60 * 60 * 1000;
+  const weeksUntilEdd = (new Date(edd).getTime() - Date.now()) / msPerWeek;
+  const week = Math.round(40 - weeksUntilEdd);
+  return week >= 1 && week <= 42 ? week : null;
+}
+
+function getTriColor(week: number): string {
+  if (week <= 13) return '#3A7DB5';
+  if (week <= 27) return colors.primaryDk;
+  return colors.accent;
+}
+
+function getTriLabel(week: number): string {
+  if (week <= 13) return '1º Tri';
+  if (week <= 27) return '2º Tri';
+  return '3º Tri';
+}
+
 function durationLabel(minutes: number): string {
   return minutes >= 60 ? `${minutes / 60}h` : `${minutes}min`;
 }
@@ -241,11 +262,17 @@ export function DashboardMedicoScreen() {
                       </Text>
                     </View>
                     <View style={styles.pRight}>
-                      {p.current_week != null && (
-                        <View style={styles.weekBadge}>
-                          <Text style={styles.weekBadgeText}>Sem. {p.current_week}</Text>
-                        </View>
-                      )}
+                      {(() => {
+                        const week = calcWeek(p.edd, p.current_week);
+                        if (week == null) return null;
+                        const color = getTriColor(week);
+                        return (
+                          <View style={styles.weekBadge}>
+                            <Text style={[styles.weekNum, { color }]}>{week}</Text>
+                            <Text style={styles.weekSub}>{getTriLabel(week)}</Text>
+                          </View>
+                        );
+                      })()}
                       <RiskBadge risk={risk} />
                     </View>
                   </TouchableOpacity>
@@ -336,8 +363,9 @@ const styles = StyleSheet.create({
   alertChip: { backgroundColor: 'rgba(229,152,125,0.12)', borderRadius: radius.full, paddingHorizontal: 9, paddingVertical: 3, alignSelf: 'flex-start', marginTop: 4, flexDirection: 'row', alignItems: 'center', gap: 5 },
   alertText: { fontSize: 10.5, fontWeight: '600', color: colors.accent },
   pRight: { alignItems: 'flex-end', gap: 6, flexShrink: 0 },
-  weekBadge: { backgroundColor: colors.primaryLight, paddingHorizontal: 10, paddingVertical: 4, borderRadius: radius.full },
-  weekBadgeText: { fontSize: 11, fontWeight: '700', color: colors.primaryDk },
+  weekBadge: { alignItems: 'center' },
+  weekNum: { fontSize: 20, fontWeight: '800', lineHeight: 22 },
+  weekSub: { fontSize: 10, fontWeight: '600', color: colors.textInactive, marginTop: 1 },
 
   center: { paddingTop: 40, alignItems: 'center' },
   empty: { fontSize: 13, color: colors.textMid, textAlign: 'center', marginBottom: 16 },

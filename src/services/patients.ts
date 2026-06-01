@@ -148,6 +148,17 @@ export const patientsService = {
   getSecretaryDashboard: () =>
     api.get<SecretaryDashboard>('/secretary/dashboard'),
 
+  // ── Criar gestante ──────────────────────────────────────────────────────────
+  createPatient: (data: {
+    name: string;
+    clinic_id: string;
+    doctor_id: string;
+    email?: string;
+    phone?: string;
+    lmp_date?: string;
+    edd?: string;
+  }) => api.post<{ patient_id: string; user_id: string; prontuario: string; has_email: boolean }>('/patients', data),
+
   // ── Anamnese ────────────────────────────────────────────────────────────────
   getAnamnesis: (patientId: string) =>
     api.get<PatientAnamnesis>(`/patients/${patientId}/anamnesis`),
