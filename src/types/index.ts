@@ -372,6 +372,7 @@ export interface AppointmentEvolution extends EvolutionCreate {
 export type AlcoolFrequencia = 'social' | 'semanal' | 'diario';
 
 export interface AnamneseCreate {
+  // Doenças pré-existentes
   has_diabetes?: boolean;
   has_hipertensao?: boolean;
   has_cardiopatia?: boolean;
@@ -379,14 +380,22 @@ export interface AnamneseCreate {
   has_tireoide?: boolean;
   has_doenca_renal?: boolean;
   has_autoimune?: boolean;
+  has_hiv?: boolean;
+  has_depressao_ansiedade?: boolean;
+  has_asma?: boolean;
+  has_trombofilia?: boolean;
   outras_doencas?: string;
+  // Alergias
   alergias_medicamentos?: string;
   outras_alergias?: string;
+  // Antecedentes familiares
   familiar_diabetes?: boolean;
   familiar_hipertensao?: boolean;
   familiar_gemelaridade?: boolean;
   familiar_malformacoes?: boolean;
+  familiar_trombose?: boolean;
   outros_familiares?: string;
+  // Hábitos de vida
   tabagismo?: boolean;
   tabagismo_cigarros_dia?: number;
   alcool?: boolean;
@@ -394,9 +403,25 @@ export interface AnamneseCreate {
   drogas_ilicitas?: boolean;
   atividade_fisica?: boolean;
   atividade_fisica_descricao?: string;
+  violencia_domestica?: boolean;
+  sono_qualidade?: 'boa' | 'regular' | 'ruim';
+  estresse_nivel?: 'baixo' | 'moderado' | 'alto';
+  exposicao_ocupacional?: string;
+  // Antecedentes obstétricos (GESTA)
+  gesta?: number;
+  para?: number;
+  abortos?: number;
+  tipo_parto_anterior?: 'normal' | 'cesarea' | 'ambos';
   pre_eclampsia_anterior?: boolean;
   diabetes_gestacional_anterior?: boolean;
   perda_fetal_anterior?: boolean;
+  prematuridade_anterior?: boolean;
+  intercorrencias_anteriores?: string;
+  // Suporte social / Acompanhante
+  acompanhante_nome?: string;
+  acompanhante_parentesco?: string;
+  acompanhante_telefone?: string;
+  situacao_conjugal?: 'casada' | 'uniao_estavel' | 'solteira' | 'outro';
 }
 
 export interface PatientAnamnesis extends AnamneseCreate {

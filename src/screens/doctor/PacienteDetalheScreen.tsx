@@ -1,4 +1,5 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
+import * as Clipboard from 'expo-clipboard';
 import {
   View, Text, StyleSheet, ScrollView, TouchableOpacity, TextInput,
   Modal, TouchableWithoutFeedback, ActivityIndicator,
@@ -29,7 +30,7 @@ type Tab = 'geral' | 'anamnese' | 'sinais' | 'consultas' | 'usg' | 'exames' | 'v
 
 const TABS: { key: Tab; label: string }[] = [
   { key: 'geral',     label: 'Geral' },
-  { key: 'anamnese',  label: 'Anamnese' },
+  { key: 'anamnese',  label: 'Histórico' },
   { key: 'sinais',    label: 'Sinais Vitais' },
   { key: 'consultas', label: 'Consultas' },
   { key: 'usg',       label: 'USG' },
@@ -137,6 +138,296 @@ function Row({ children }: { children: React.ReactNode }) {
   return <View style={{ flexDirection: 'row', gap: 10 }}>{children}</View>;
 }
 
+// ── EXPORT MODAL ──────────────────────────────────────────────────────────────
+
+type ExportSection = 'gestacional' | 'clinicos' | 'contato' | 'historico' | 'obstetricos' | 'habitos';
+
+const EXPORT_SECTIONS: { key: ExportSection; label: string }[] = [
+  { key: 'gestacional', label: 'Dados gestacionais' },
+  { key: 'clinicos',    label: 'Dados clínicos' },
+  { key: 'contato',     label: 'Contato e acompanhante' },
+  { key: 'historico',   label: 'Histórico clínico' },
+  { key: 'obstetricos', label: 'Antecedentes obstétricos' },
+  { key: 'habitos',     label: 'Hábitos de vida' },
+];
+
+function buildProntuarioText(
+  sections: Set<ExportSection>,
+  patient: PatientDetail | null,
+  prontuario: PatientProntuario | null,
+  anamnese: AnamneseCreate | null,
+): string {
+  const bool = (v?: boolean | null) => v ? 'Sim' : 'Não';
+  const val = (v?: string | number | null) => v != null && v !== '' ? String(v) : '—';
+  const week = calcWeek(prontuario?.edd ?? null, prontuario?.current_week ?? null);
+
+  const doencas = [
+    anamnese?.has_diabetes && 'Diabetes',
+    anamnese?.has_hipertensao && 'Hipertensão',
+    anamnese?.has_cardiopatia && 'Cardiopatia',
+    anamnese?.has_epilepsia && 'Epilepsia',
+    anamnese?.has_tireoide && 'Tireoide',
+    anamnese?.has_doenca_renal && 'Doença renal',
+    anamnese?.has_autoimune && 'Autoimune',
+    anamnese?.has_hiv && 'HIV/AIDS',
+    anamnese?.has_depressao_ansiedade && 'Depressão/Ansiedade',
+    anamnese?.has_asma && 'Asma/DPOC',
+    anamnese?.has_trombofilia && 'Trombofilia',
+  ].filter(Boolean).join(', ') || 'Nenhuma';
+
+  const familiares = [
+    anamnese?.familiar_diabetes && 'Diabetes',
+    anamnese?.familiar_hipertensao && 'Hipertensão',
+    anamnese?.familiar_gemelaridade && 'Gemelaridade',
+    anamnese?.familiar_malformacoes && 'Malformações',
+    anamnese?.familiar_trombose && 'Trombose',
+  ].filter(Boolean).join(', ') || 'Nenhum';
+
+  const gesta = anamnese?.gesta != null
+    ? `G${anamnese.gesta}P${anamnese.para ?? 0}A${anamnese.abortos ?? 0}`
+    : val((patient as any)?.parity);
+
+  const tipoPartoMap: Record<string, string> = { normal: 'Normal', cesarea: 'Cesárea', ambos: 'Ambos/Múltiplos' };
+  const tipoParto = tipoPartoMap[anamnese?.tipo_parto_anterior ?? ''] ?? '—';
+  const conjugalMap: Record<string, string> = { casada: 'Casada', uniao_estavel: 'União estável', solteira: 'Solteira', outro: 'Outro' };
+  const conjugal = conjugalMap[anamnese?.situacao_conjugal ?? ''] ?? '—';
+
+  const blocks: string[] = [
+    `PRONTUÁRIO — ${patient?.name?.toUpperCase() ?? ''}`,
+    `Data: ${new Date().toLocaleDateString('pt-BR')}`,
+  ];
+
+  if (sections.has('gestacional')) {
+    blocks.push(
+      '',
+      '═══ DADOS GESTACIONAIS ═══',
+      `IG atual:          ${week != null ? `${week} semanas` : '—'}`,
+      `DUM:               ${prontuario?.lmp_date ? formatDate(prontuario.lmp_date) : '—'}`,
+      `DPP:               ${prontuario?.edd ? formatDate(prontuario.edd) : '—'}`,
+      `GESTA:             ${gesta}`,
+      `Tipo parto ant.:   ${tipoParto}`,
+      `Risco:             ${val((patient as any)?.risk_level)}`,
+      `Hospital:          ${val((patient as any)?.hospital)}`,
+    );
+  }
+
+  if (sections.has('clinicos')) {
+    blocks.push(
+      '',
+      '═══ DADOS CLÍNICOS ═══',
+      `Tipo sanguíneo:    ${val(patient?.blood_type)}`,
+      `Altura:            ${prontuario?.height_cm ? `${prontuario.height_cm} cm` : '—'}`,
+      `Peso inicial:      ${prontuario?.weight_initial_kg ? `${prontuario.weight_initial_kg} kg` : '—'}`,
+    );
+  }
+
+  if (sections.has('contato')) {
+    blocks.push(
+      '',
+      '═══ CONTATO ═══',
+      `E-mail:            ${val(patient?.email?.includes('@sem-email') ? null : patient?.email)}`,
+      `Telefone:          ${val(patient?.phone)}`,
+      `Situação conjugal: ${conjugal}`,
+      `Acompanhante:      ${val(anamnese?.acompanhante_nome || (patient as any)?.acompanhante)}`,
+      `Parentesco:        ${val(anamnese?.acompanhante_parentesco)}`,
+      `Tel. acompanhante: ${val(anamnese?.acompanhante_telefone)}`,
+    );
+  }
+
+  if (sections.has('historico')) {
+    blocks.push(
+      '',
+      '═══ HISTÓRICO CLÍNICO ═══',
+      `Doenças:           ${doencas}`,
+      anamnese?.outras_doencas ? `Outras doenças:    ${anamnese.outras_doencas}` : '',
+      `Alerg. medic.:     ${val(anamnese?.alergias_medicamentos)}`,
+      `Outras alergias:   ${val(anamnese?.outras_alergias)}`,
+      `Antec. familiares: ${familiares}`,
+      anamnese?.outros_familiares ? `Outros familiares: ${anamnese.outros_familiares}` : '',
+    );
+  }
+
+  if (sections.has('obstetricos')) {
+    blocks.push(
+      '',
+      '═══ ANTECEDENTES OBSTÉTRICOS ═══',
+      `Pré-eclâmpsia ant.:  ${bool(anamnese?.pre_eclampsia_anterior)}`,
+      `DM gestacional ant.: ${bool(anamnese?.diabetes_gestacional_anterior)}`,
+      `Perda fetal ant.:    ${bool(anamnese?.perda_fetal_anterior)}`,
+      `Prematuridade ant.:  ${bool(anamnese?.prematuridade_anterior)}`,
+      anamnese?.intercorrencias_anteriores ? `Intercorrências:     ${anamnese.intercorrencias_anteriores}` : '',
+    );
+  }
+
+  if (sections.has('habitos')) {
+    blocks.push(
+      '',
+      '═══ HÁBITOS DE VIDA ═══',
+      `Tabagismo:         ${bool(anamnese?.tabagismo)}${anamnese?.tabagismo_cigarros_dia ? ` (${anamnese.tabagismo_cigarros_dia} cig/dia)` : ''}`,
+      `Álcool:            ${bool(anamnese?.alcool)}${anamnese?.alcool_frequencia ? ` (${anamnese.alcool_frequencia})` : ''}`,
+      `Drogas ilícitas:   ${bool(anamnese?.drogas_ilicitas)}`,
+      `Atividade física:  ${bool(anamnese?.atividade_fisica)}${anamnese?.atividade_fisica_descricao ? ` — ${anamnese.atividade_fisica_descricao}` : ''}`,
+      `Qualidade do sono: ${val(anamnese?.sono_qualidade)}`,
+      `Nível de estresse: ${val(anamnese?.estresse_nivel)}`,
+      anamnese?.exposicao_ocupacional ? `Exp. ocupacional:  ${anamnese.exposicao_ocupacional}` : '',
+    );
+  }
+
+  return blocks.filter((l) => l !== '').join('\n');
+}
+
+function ExportModal({
+  visible, onClose, patient, prontuario, patientId,
+}: {
+  visible: boolean;
+  onClose: () => void;
+  patient: PatientDetail | null;
+  prontuario: PatientProntuario | null;
+  patientId: string;
+}) {
+  const insets = useSafeAreaInsets();
+  const allKeys = EXPORT_SECTIONS.map((s) => s.key) as ExportSection[];
+  const [selected, setSelected] = useState<Set<ExportSection>>(new Set(allKeys));
+  const [step, setStep] = useState<'select' | 'preview'>('select');
+  const [text, setText] = useState('');
+  const [copied, setCopied] = useState(false);
+  const [loadingAnamnese, setLoadingAnamnese] = useState(false);
+  const [anamnese, setAnamnese] = useState<AnamneseCreate | null>(null);
+
+  useEffect(() => {
+    if (visible && !anamnese) {
+      setLoadingAnamnese(true);
+      patientsService.getAnamnesis(patientId)
+        .then((a) => setAnamnese(a as AnamneseCreate))
+        .catch(() => {})
+        .finally(() => setLoadingAnamnese(false));
+    }
+    if (!visible) { setStep('select'); setCopied(false); }
+  }, [visible, patientId]);
+
+  const toggle = (key: ExportSection) => {
+    setSelected((prev) => {
+      const next = new Set(prev);
+      next.has(key) ? next.delete(key) : next.add(key);
+      return next;
+    });
+  };
+
+  const handleConfirm = async () => {
+    const generated = buildProntuarioText(selected, patient, prontuario, anamnese);
+    setText(generated);
+    await Clipboard.setStringAsync(generated);
+    setCopied(true);
+    setStep('preview');
+  };
+
+  const handleCopyAgain = async () => {
+    await Clipboard.setStringAsync(text);
+    setCopied(true);
+    setTimeout(() => setCopied(false), 2000);
+  };
+
+  return (
+    <Modal visible={visible} transparent animationType="slide" onRequestClose={onClose}>
+      <TouchableWithoutFeedback onPress={onClose}>
+        <View style={{ flex: 1, backgroundColor: 'rgba(0,0,0,0.45)' }} />
+      </TouchableWithoutFeedback>
+
+      <View style={[expS.sheet, { paddingBottom: insets.bottom + 16 }]}>
+        <View style={expS.handle} />
+
+        {step === 'select' ? (
+          <>
+            <Text style={expS.title}>Exportar prontuário</Text>
+            <Text style={expS.subtitle}>Selecione as seções que deseja incluir:</Text>
+            <ScrollView showsVerticalScrollIndicator={false} style={{ maxHeight: 320 }}>
+              {EXPORT_SECTIONS.map((sec) => (
+                <TouchableOpacity key={sec.key} style={expS.secRow} onPress={() => toggle(sec.key)} activeOpacity={0.7}>
+                  <View style={[expS.checkbox, selected.has(sec.key) && expS.checkboxOn]}>
+                    {selected.has(sec.key) && <Text style={expS.checkmark}>✓</Text>}
+                  </View>
+                  <Text style={expS.secLabel}>{sec.label}</Text>
+                </TouchableOpacity>
+              ))}
+            </ScrollView>
+            <View style={expS.footer}>
+              <TouchableOpacity style={expS.btnSecondary} onPress={onClose}>
+                <Text style={expS.btnSecondaryText}>Cancelar</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={[expS.btnPrimary, (selected.size === 0 || loadingAnamnese) && { opacity: 0.5 }]}
+                disabled={selected.size === 0 || loadingAnamnese}
+                onPress={handleConfirm}
+              >
+                <Text style={expS.btnPrimaryText}>
+                  {loadingAnamnese ? 'Carregando...' : 'Gerar e copiar'}
+                </Text>
+              </TouchableOpacity>
+            </View>
+          </>
+        ) : (
+          <>
+            <View style={expS.previewHeader}>
+              <Text style={expS.title}>Prontuário copiado!</Text>
+              <TouchableOpacity onPress={handleCopyAgain}>
+                <Text style={[expS.copyAgain, copied && { color: colors.primaryDk }]}>
+                  {copied ? '✓ Copiado' : 'Copiar novamente'}
+                </Text>
+              </TouchableOpacity>
+            </View>
+            <Text style={expS.subtitle}>Toque no texto para selecionar partes específicas:</Text>
+            <ScrollView style={expS.previewScroll} showsVerticalScrollIndicator>
+              <TextInput
+                style={expS.previewText}
+                multiline
+                editable={false}
+                selectTextOnFocus={false}
+                contextMenuHidden={false}
+                value={text}
+              />
+            </ScrollView>
+            <View style={expS.footer}>
+              <TouchableOpacity style={expS.btnSecondary} onPress={() => setStep('select')}>
+                <Text style={expS.btnSecondaryText}>← Editar seleção</Text>
+              </TouchableOpacity>
+              <TouchableOpacity style={expS.btnPrimary} onPress={onClose}>
+                <Text style={expS.btnPrimaryText}>Fechar</Text>
+              </TouchableOpacity>
+            </View>
+          </>
+        )}
+      </View>
+    </Modal>
+  );
+}
+
+const expS = StyleSheet.create({
+  sheet: {
+    backgroundColor: colors.white,
+    borderTopLeftRadius: 24, borderTopRightRadius: 24,
+    paddingHorizontal: spacing.lg, paddingTop: 12,
+    maxHeight: '85%',
+    position: 'absolute', bottom: 0, left: 0, right: 0,
+  },
+  handle: { width: 40, height: 4, borderRadius: 2, backgroundColor: '#ddd', alignSelf: 'center', marginBottom: 16 },
+  title: { fontSize: 18, fontWeight: '800', color: colors.text, marginBottom: 4 },
+  subtitle: { fontSize: 13, color: colors.textMid, marginBottom: 14 },
+  secRow: { flexDirection: 'row', alignItems: 'center', paddingVertical: 13, borderBottomWidth: 1, borderBottomColor: 'rgba(0,0,0,0.05)' },
+  checkbox: { width: 22, height: 22, borderRadius: 6, borderWidth: 2, borderColor: colors.textInactive, marginRight: 12, alignItems: 'center', justifyContent: 'center' },
+  checkboxOn: { backgroundColor: colors.primary, borderColor: colors.primary },
+  checkmark: { color: '#fff', fontSize: 13, fontWeight: '700' },
+  secLabel: { fontSize: 15, color: colors.text },
+  footer: { flexDirection: 'row', gap: 10, marginTop: 16 },
+  btnPrimary: { flex: 2, backgroundColor: colors.primary, borderRadius: radius.md, paddingVertical: 14, alignItems: 'center' },
+  btnPrimaryText: { fontSize: 14, fontWeight: '700', color: '#fff' },
+  btnSecondary: { flex: 1, backgroundColor: colors.bg, borderRadius: radius.md, paddingVertical: 14, alignItems: 'center', borderWidth: 1, borderColor: 'rgba(0,0,0,0.1)' },
+  btnSecondaryText: { fontSize: 14, fontWeight: '600', color: colors.textMid },
+  previewHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 4 },
+  copyAgain: { fontSize: 13, fontWeight: '600', color: colors.primary },
+  previewScroll: { flex: 1, backgroundColor: colors.bg, borderRadius: radius.md, padding: 12, marginBottom: 8 },
+  previewText: { fontSize: 12, color: colors.text, fontFamily: 'Courier New', lineHeight: 18 },
+});
+
 // ── GERAL TAB ─────────────────────────────────────────────────────────────────
 
 function GeralTab({ patientId }: { patientId: string }) {
@@ -147,6 +438,7 @@ function GeralTab({ patientId }: { patientId: string }) {
   const [loading, setLoading] = useState(true);
   const [editModal, setEditModal] = useState(false);
   const [saving, setSaving] = useState(false);
+  const [exportModal, setExportModal] = useState(false);
   const [form, setForm] = useState({
     height_cm: '', weight_initial_kg: '', blood_type: '',
     parity: '', acompanhante: '', hospital: '',
@@ -319,6 +611,18 @@ function GeralTab({ patientId }: { patientId: string }) {
         />
       </View>
 
+      <TouchableOpacity style={s.exportBtn} activeOpacity={0.8} onPress={() => setExportModal(true)}>
+        <Text style={s.exportBtnText}>📋 Exportar prontuário</Text>
+      </TouchableOpacity>
+
+      <ExportModal
+        visible={exportModal}
+        onClose={() => setExportModal(false)}
+        patient={patient}
+        prontuario={prontuario}
+        patientId={patientId}
+      />
+
       <Sheet visible={editModal} onClose={() => setEditModal(false)} title="Editar Prontuário">
         <Row>
           <View style={{ flex: 1 }}>
@@ -386,6 +690,10 @@ const DOENCAS: { key: keyof AnamneseCreate; label: string }[] = [
   { key: 'has_tireoide', label: 'Doença da tireoide' },
   { key: 'has_doenca_renal', label: 'Doença renal' },
   { key: 'has_autoimune', label: 'Doença autoimune' },
+  { key: 'has_hiv', label: 'HIV/AIDS' },
+  { key: 'has_depressao_ansiedade', label: 'Depressão / Ansiedade' },
+  { key: 'has_asma', label: 'Asma / DPOC' },
+  { key: 'has_trombofilia', label: 'Trombofilia / Trombose' },
 ];
 
 const FAMILIARES: { key: keyof AnamneseCreate; label: string }[] = [
@@ -393,6 +701,7 @@ const FAMILIARES: { key: keyof AnamneseCreate; label: string }[] = [
   { key: 'familiar_hipertensao', label: 'Hipertensão' },
   { key: 'familiar_gemelaridade', label: 'Gemelaridade' },
   { key: 'familiar_malformacoes', label: 'Malformações congênitas' },
+  { key: 'familiar_trombose', label: 'Trombose / Trombofilia' },
 ];
 
 function CheckRow({ label, value, onChange }: { label: string; value: boolean; onChange: (v: boolean) => void }) {
@@ -419,23 +728,48 @@ function AnaSection({ title }: { title: string }) {
   return <Text style={{ fontSize: 13, fontWeight: '700', color: colors.primary, textTransform: 'uppercase', letterSpacing: 0.6, marginTop: 20, marginBottom: 8 }}>{title}</Text>;
 }
 
+function ChipRow<T extends string>({
+  options, value, onChange,
+}: { options: { value: T; label: string }[]; value?: T; onChange: (v: T) => void }) {
+  return (
+    <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginBottom: 16 }}>
+      {options.map((o) => (
+        <TouchableOpacity key={o.value} style={[s.chip2, value === o.value && s.chip2Active]}
+          onPress={() => onChange(o.value)}>
+          <Text style={[s.chip2Text, value === o.value && s.chip2TextActive]}>{o.label}</Text>
+        </TouchableOpacity>
+      ))}
+    </View>
+  );
+}
+
 function AnamneseTab({ patientId }: { patientId: string }) {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [form, setForm] = useState<AnamneseCreate>({
     has_diabetes: false, has_hipertensao: false, has_cardiopatia: false,
     has_epilepsia: false, has_tireoide: false, has_doenca_renal: false,
-    has_autoimune: false, outras_doencas: '',
+    has_autoimune: false, has_hiv: false, has_depressao_ansiedade: false,
+    has_asma: false, has_trombofilia: false, outras_doencas: '',
     alergias_medicamentos: '', outras_alergias: '',
     familiar_diabetes: false, familiar_hipertensao: false,
-    familiar_gemelaridade: false, familiar_malformacoes: false, outros_familiares: '',
+    familiar_gemelaridade: false, familiar_malformacoes: false,
+    familiar_trombose: false, outros_familiares: '',
     tabagismo: false, tabagismo_cigarros_dia: undefined,
     alcool: false, alcool_frequencia: undefined,
     drogas_ilicitas: false,
     atividade_fisica: false, atividade_fisica_descricao: '',
+    violencia_domestica: false, sono_qualidade: undefined,
+    estresse_nivel: undefined, exposicao_ocupacional: '',
+    gesta: undefined, para: undefined, abortos: undefined,
+    tipo_parto_anterior: undefined,
     pre_eclampsia_anterior: false,
     diabetes_gestacional_anterior: false,
     perda_fetal_anterior: false,
+    prematuridade_anterior: false,
+    intercorrencias_anteriores: '',
+    acompanhante_nome: '', acompanhante_parentesco: '',
+    acompanhante_telefone: '', situacao_conjugal: undefined,
   });
 
   const setField = <K extends keyof AnamneseCreate>(key: K, value: AnamneseCreate[K]) =>
@@ -459,6 +793,74 @@ function AnamneseTab({ patientId }: { patientId: string }) {
 
   return (
     <ScrollView contentContainerStyle={{ padding: spacing.lg, paddingBottom: 40 }}>
+
+      {/* ACOMPANHANTE */}
+      <AnaSection title="Acompanhante / Suporte social" />
+      <Field label="Nome do acompanhante" value={form.acompanhante_nome ?? ''}
+        onChange={(v) => setField('acompanhante_nome', v)} placeholder="Nome completo" />
+      <Field label="Parentesco" value={form.acompanhante_parentesco ?? ''}
+        onChange={(v) => setField('acompanhante_parentesco', v)} placeholder="ex: Marido, mãe, irmã" />
+      <Field label="Telefone do acompanhante" value={form.acompanhante_telefone ?? ''}
+        onChange={(v) => setField('acompanhante_telefone', v)} placeholder="(11) 99999-9999" />
+      <Text style={s.fieldLabel}>Situação conjugal</Text>
+      <ChipRow
+        options={[
+          { value: 'casada', label: 'Casada' },
+          { value: 'uniao_estavel', label: 'União estável' },
+          { value: 'solteira', label: 'Solteira' },
+          { value: 'outro', label: 'Outro' },
+        ]}
+        value={form.situacao_conjugal}
+        onChange={(v) => setField('situacao_conjugal', v)}
+      />
+
+      {/* ANTECEDENTES OBSTÉTRICOS */}
+      <AnaSection title="Antecedentes obstétricos (GESTA)" />
+      <View style={{ flexDirection: 'row', gap: 12, marginBottom: 4 }}>
+        <View style={{ flex: 1 }}>
+          <Text style={s.fieldLabel}>G (gestações)</Text>
+          <TextInput style={[s.fieldInput, { marginBottom: 12 }]} keyboardType="number-pad"
+            placeholder="0" placeholderTextColor={colors.textInactive}
+            value={form.gesta != null ? String(form.gesta) : ''}
+            onChangeText={(v) => setField('gesta', v ? parseInt(v) : undefined)} />
+        </View>
+        <View style={{ flex: 1 }}>
+          <Text style={s.fieldLabel}>P (partos)</Text>
+          <TextInput style={[s.fieldInput, { marginBottom: 12 }]} keyboardType="number-pad"
+            placeholder="0" placeholderTextColor={colors.textInactive}
+            value={form.para != null ? String(form.para) : ''}
+            onChangeText={(v) => setField('para', v ? parseInt(v) : undefined)} />
+        </View>
+        <View style={{ flex: 1 }}>
+          <Text style={s.fieldLabel}>A (abortos)</Text>
+          <TextInput style={[s.fieldInput, { marginBottom: 12 }]} keyboardType="number-pad"
+            placeholder="0" placeholderTextColor={colors.textInactive}
+            value={form.abortos != null ? String(form.abortos) : ''}
+            onChangeText={(v) => setField('abortos', v ? parseInt(v) : undefined)} />
+        </View>
+      </View>
+      <Text style={s.fieldLabel}>Tipo de parto anterior</Text>
+      <ChipRow
+        options={[
+          { value: 'normal', label: 'Normal' },
+          { value: 'cesarea', label: 'Cesárea' },
+          { value: 'ambos', label: 'Ambos' },
+        ]}
+        value={form.tipo_parto_anterior}
+        onChange={(v) => setField('tipo_parto_anterior', v)}
+      />
+      <CheckRow label="Pré-eclâmpsia em gestação anterior" value={!!form.pre_eclampsia_anterior}
+        onChange={(v) => setField('pre_eclampsia_anterior', v)} />
+      <CheckRow label="Diabetes gestacional anterior" value={!!form.diabetes_gestacional_anterior}
+        onChange={(v) => setField('diabetes_gestacional_anterior', v)} />
+      <CheckRow label="Perda fetal anterior (aborto/óbito)" value={!!form.perda_fetal_anterior}
+        onChange={(v) => setField('perda_fetal_anterior', v)} />
+      <CheckRow label="Prematuridade anterior" value={!!form.prematuridade_anterior}
+        onChange={(v) => setField('prematuridade_anterior', v)} />
+      <Field label="Intercorrências em gestações anteriores" value={form.intercorrencias_anteriores ?? ''}
+        onChange={(v) => setField('intercorrencias_anteriores', v)} multiline placeholder="Descreva..." />
+
+      {/* DOENÇAS */}
       <AnaSection title="Doenças pré-existentes" />
       {DOENCAS.map((d) => (
         <CheckRow key={d.key} label={d.label} value={!!(form[d.key])} onChange={(v) => setField(d.key, v)} />
@@ -466,12 +868,14 @@ function AnamneseTab({ patientId }: { patientId: string }) {
       <Field label="Outras doenças" value={form.outras_doencas ?? ''}
         onChange={(v) => setField('outras_doencas', v)} multiline placeholder="Descreva outras condições..." />
 
+      {/* ALERGIAS */}
       <AnaSection title="Alergias" />
       <Field label="Alergias a medicamentos" value={form.alergias_medicamentos ?? ''}
         onChange={(v) => setField('alergias_medicamentos', v)} placeholder="ex: Penicilina, AAS" />
       <Field label="Outras alergias" value={form.outras_alergias ?? ''}
         onChange={(v) => setField('outras_alergias', v)} placeholder="ex: Látex, frutos do mar" />
 
+      {/* FAMILIARES */}
       <AnaSection title="Antecedentes familiares" />
       {FAMILIARES.map((d) => (
         <CheckRow key={d.key} label={d.label} value={!!(form[d.key])} onChange={(v) => setField(d.key, v)} />
@@ -479,6 +883,7 @@ function AnamneseTab({ patientId }: { patientId: string }) {
       <Field label="Outros antecedentes familiares" value={form.outros_familiares ?? ''}
         onChange={(v) => setField('outros_familiares', v)} multiline placeholder="Descreva..." />
 
+      {/* HÁBITOS */}
       <AnaSection title="Hábitos de vida" />
       <CheckRow label="Tabagismo" value={!!form.tabagismo} onChange={(v) => setField('tabagismo', v)} />
       {form.tabagismo && (
@@ -507,18 +912,27 @@ function AnamneseTab({ patientId }: { patientId: string }) {
         <Field label="Tipo e frequência" value={form.atividade_fisica_descricao ?? ''}
           onChange={(v) => setField('atividade_fisica_descricao', v)} placeholder="ex: Caminhada 3x por semana" />
       )}
-
-      <AnaSection title="Antecedentes obstétricos" />
-      <CheckRow label="Pré-eclâmpsia em gestação anterior" value={!!form.pre_eclampsia_anterior}
-        onChange={(v) => setField('pre_eclampsia_anterior', v)} />
-      <CheckRow label="Diabetes gestacional anterior" value={!!form.diabetes_gestacional_anterior}
-        onChange={(v) => setField('diabetes_gestacional_anterior', v)} />
-      <CheckRow label="Perda fetal anterior (aborto/óbito)" value={!!form.perda_fetal_anterior}
-        onChange={(v) => setField('perda_fetal_anterior', v)} />
+      <CheckRow label="Rastreio de violência doméstica" value={!!form.violencia_domestica}
+        onChange={(v) => setField('violencia_domestica', v)} />
+      <Text style={s.fieldLabel}>Qualidade do sono</Text>
+      <ChipRow
+        options={[{ value: 'boa', label: 'Boa' }, { value: 'regular', label: 'Regular' }, { value: 'ruim', label: 'Ruim' }]}
+        value={form.sono_qualidade}
+        onChange={(v) => setField('sono_qualidade', v)}
+      />
+      <Text style={s.fieldLabel}>Nível de estresse</Text>
+      <ChipRow
+        options={[{ value: 'baixo', label: 'Baixo' }, { value: 'moderado', label: 'Moderado' }, { value: 'alto', label: 'Alto' }]}
+        value={form.estresse_nivel}
+        onChange={(v) => setField('estresse_nivel', v)}
+      />
+      <Field label="Exposição ocupacional" value={form.exposicao_ocupacional ?? ''}
+        onChange={(v) => setField('exposicao_ocupacional', v)}
+        placeholder="ex: Produtos químicos, esforço físico intenso" />
 
       <TouchableOpacity style={[s.saveBtn, { marginTop: 24 }, saving && { opacity: 0.6 }]}
         onPress={salvar} disabled={saving}>
-        <Text style={s.saveBtnText}>{saving ? 'Salvando...' : 'Salvar Anamnese'}</Text>
+        <Text style={s.saveBtnText}>{saving ? 'Salvando...' : 'Salvar Histórico'}</Text>
       </TouchableOpacity>
     </ScrollView>
   );
@@ -1420,6 +1834,9 @@ const s = StyleSheet.create({
   notasCard: { backgroundColor: '#FFFDF0', borderRadius: radius.md, padding: 16, borderLeftWidth: 3, borderLeftColor: colors.accent },
   notasTitle: { fontSize: 12, fontWeight: '600', color: colors.textMid, marginBottom: 10 },
   notasInput: { fontSize: 14, color: colors.text, minHeight: 100 },
+  exportBtn: { backgroundColor: colors.primary, borderRadius: radius.md, paddingVertical: 14, alignItems: 'center', marginTop: 12, marginBottom: 8 },
+  exportBtnDone: { backgroundColor: colors.primaryDk },
+  exportBtnText: { fontSize: 14, fontWeight: '700', color: '#fff' },
 
   sheet: { backgroundColor: colors.white, borderTopLeftRadius: radius.lg, borderTopRightRadius: radius.lg, padding: spacing.lg, maxHeight: '85%' },
   handle: { width: 40, height: 4, borderRadius: 2, backgroundColor: colors.textInactive, alignSelf: 'center', marginBottom: 20 },
